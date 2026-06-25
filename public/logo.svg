@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="arrowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="100%" stop-color="#4FACFE" />
+    </linearGradient>
+    <linearGradient id="badgeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34D399" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+    
+    <!-- Clip Path for Document Content -->
+    <clipPath id="docClip">
+      <rect x="156" y="90" width="200" height="280" rx="20" />
+    </clipPath>
+  </defs>
+
+  <!-- Outer Tech Rings representing Browser/Extension Environment -->
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#E2E8F0" stroke-width="4" opacity="0.3" />
+  <circle cx="256" cy="256" r="230" fill="none" stroke="url(#ringGrad)" stroke-width="8" stroke-dasharray="180 40 90 30" stroke-linecap="round" transform="rotate(-45 256 256)" />
+
+  <!-- Main Document Group -->
+  <g id="document">
+    <!-- Document Base Shadow -->
+    <rect x="162" y="96" width="200" height="280" rx="20" fill="#0F172A" opacity="0.15" />
+    
+    <!-- Clipped Content Inside Document -->
+    <g clip-path="url(#docClip)">
+      <rect x="156" y="90" width="200" height="280" fill="#FFFFFF" />
+      <!-- Header Band -->
+      <rect x="156" y="90" width="200" height="70" fill="url(#headerGrad)" />
+      
+      <!-- Briefcase Icon inside Header -->
+      <path d="M 236,114 L 276,114 L 276,118 L 236,118 Z M 226,118 L 286,118 C 290,118 292,120 292,124 L 292,142 C 292,146 290,148 286,148 L 226,148 C 222,148 220,146 220,142 L 220,124 C 220,120 222,118 226,118 Z" fill="#FFFFFF" opacity="0.95" />
+      <path d="M 246,114 L 266,114 L 266,109 C 266,107 264,105 262,105 L 250,105 C 248,105 246,107 246,109 Z" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" />
+
+      <!-- Form Fields (Visualizing Autofill Progress) -->
+      <!-- Field 1 -->
+      <rect x="180" y="185" width="55" height="7" rx="3.5" fill="#94A3B8" opacity="0.6" />
+      <rect x="180" y="198" width="152" height="22" rx="6" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="2" />
+      <circle cx="194" cy="209" r="4" fill="#38BDF8" />
+      <rect x="206" y="206" width="75" height="6" rx="3" fill="#38BDF8" />
+
+      <!-- Field 2 -->
+      <rect x="180" y="237" width="40" height="7" rx="3.5" fill="#94A3B8" opacity="0.6" />
+      <rect x="180" y="250" width="152" height="22" rx="6" fill="#F0F9FF" stroke="#7DD3FC" stroke-width="2" />
+      <circle cx="194" cy="261" r="4" fill="#38BDF8" />
+      <rect x="206" y="258" width="90" height="6" rx="3" fill="#38BDF8" />
+
+      <!-- Field 3 (Active Autofilled Highlight) -->
+      <rect x="180" y="289" width="65" height="7" rx="3.5" fill="#94A3B8" opacity="0.6" />
+      <rect x="180" y="302" width="152" height="22" rx="6" fill="#E0F2FE" stroke="#0EA5E9" stroke-width="2" />
+      <circle cx="194" cy="313" r="4" fill="#0EA5E9" />
+      <rect x="206" y="310" width="80" height="6" rx="3" fill="#0EA5E9" />
+    </g>
+    
+    <!-- Document Outer Stroke -->
+    <rect x="156" y="90" width="200" height="280" rx="20" fill="none" stroke="#1E293B" stroke-width="7" stroke-linejoin="round" />
+  </g>
+
+  <!-- Dynamic Swooping Arrow (Representing Fast Autofill Action) -->
+  <g id="autofill-arrow">
+    <!-- Arrow Shadow -->
+    <path d="M 66,396 C 116,316 206,226 326,176 L 311,136 L 416,171 L 361,271 L 346,221 C 236,266 146,346 96,426 Z" fill="#0F172A" opacity="0.15" />
+    <!-- Arrow Main Body -->
+    <path d="M 70,390 C 120,310 210,220 330,170 L 315,130 L 420,165 L 365,265 L 350,215 C 240,260 150,340 100,420 Z" fill="url(#arrowGrad)" stroke="#1E293B" stroke-width="7" stroke-linejoin="round" />
+    <!-- Sleek Internal Accent Motion Line -->
+    <path d="M 115,380 C 160,315 235,240 340,190" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" opacity="0.6" />
+  </g>
+
+  <!-- Success Checkmark Badge (Bottom Right) -->
+  <g id="success-badge">
+    <!-- Badge Shadow -->
+    <circle cx="358" cy="354" r="42" fill="#0F172A" opacity="0.2" />
+    <!-- Badge Base -->
+    <circle cx="354" cy="350" r="42" fill="url(#badgeGrad)" stroke="#1E293B" stroke-width="7" />
+    <!-- Checkmark Path -->
+    <path d="M 334,350 L 349,365 L 379,332" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+  </g>
+
+  <!-- Motion/Speed Particles -->
+  <circle cx="55" cy="415" r="7" fill="#38BDF8" />
+  <circle cx="90" cy="455" r="4" fill="#0EA5E9" />
+  <circle cx="40" cy="365" r="5" fill="#7DD3FC" />
+  <circle cx="130" cy="440" r="3" fill="#BAE6FD" />
+</svg>
