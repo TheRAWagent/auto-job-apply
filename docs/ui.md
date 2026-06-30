@@ -15,8 +15,5 @@
 
 ## Fields to be filled in profile creation flow
 - **Profile Name**: A unique name for the profile to easily identify it.
-- **Resume PDF**: Users can upload their resume in PDF format.
-- **Switch**: A toggle switch for the user to decide if they want to give a markdown of resume in addition to the PDF. If the switch is on, the user will be prompted to provide a markdown version of their resume.
-- **Upload**: User should be able to either upload both PDF and markdown or provide a url for any of the two. If the user provides a url, the extension will fetch the resume from the url and store it in the extension's storage.
-- **Preview**: The extension should provide a preview of the uploaded resume and extracted markdown. This allows users to verify that the correct documents have been uploaded and that the information is accurate.
+- **Resume PDF**: Users can upload their resume in PDF format using file or link.
 - **Submit**: Once the user has filled in all the required fields and is satisfied with the information provided, they can submit the profile. The extension will then save the profile for future use in job applications.

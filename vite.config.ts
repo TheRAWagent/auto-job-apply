@@ -22,6 +22,16 @@ export default defineConfig({
         main: path.resolve(__dirname, "index.html"),
         "create-profile": path.resolve(__dirname, "create-profile.html"),
         "manage-profile": path.resolve(__dirname, "manage-profile.html"),
+        background: path.resolve(__dirname, "src/background/index.ts"),
+        content: path.resolve(__dirname, "src/content/index.ts"),
+      },
+      output: {
+        entryFileNames: (chunkInfo) => {
+          if (chunkInfo.name === "background" || chunkInfo.name === "content") {
+            return "[name].js";
+          }
+          return "assets/[name]-[hash].js";
+        },
       },
     },
   },

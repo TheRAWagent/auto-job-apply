@@ -1,0 +1,142 @@
+import type {
+  AnswerEngine,
+  KnowledgeClassifier,
+  ContextSelector,
+  PromptBuilder,
+  LLMProvider,
+  KnowledgeService,
+} from "./interfaces";
+import type { Answer, JobContext, KnowledgeKey } from "./types";
+import { ProfileNotFoundError } from "./errors";
+
+export class DefaultAnswerEngine implements AnswerEngine {
+  private classifier: KnowledgeClassifier;
+  private contextSelector: ContextSelector;
+  private promptBuilder: PromptBuilder;
+  private llmProvider: LLMProvider;
+  private knowledgeService: KnowledgeService;
+
+  constructor(deps: {
+    classifier: KnowledgeClassifier;
+    contextSelector: ContextSelector;
+    promptBuilder: PromptBuilder;
+    llmProvider: LLMProvider;
+    knowledgeService: KnowledgeService;
+  }) {
+    this.classifier = deps.classifier;
+    this.contextSelector = deps.contextSelector;
+    this.promptBuilder = deps.promptBuilder;
+    this.llmProvider = deps.llmProvider;
+    this.knowledgeService = deps.knowledgeService;
+  }
+
+  async answer(
+    question: string,
+    profileId: string,
+    jobContext?: JobContext
+  ): Promise<Answer> {
+    const profile = await this.knowledgeService.getProfile(profileId);
+
+    if (!profile) {
+      throw new ProfileNotFoundError(profileId);
+    }
+
+    const classification = await this.classifier.classify(question);
+    const context = this.contextSelector.select(profile, classification);
+
+    switch (classification.type) {
+      case "lookup": {
+        const lookupAnswer = this.tryLookup(profile, question);
+        if (lookupAnswer !== null) {
+          return { value: String(lookupAnswer), source: "lookup" };
+        }
+        break;
+      }
+      case "derived": {
+        const derivedAnswer = await this.tryDerived(profileId, question);
+        if (derivedAnswer !== null) {
+          return { value: derivedAnswer, source: "derived" };
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    const prompt = await this.promptBuilder.build(question, context, jobContext);
+    const value = await this.llmProvider.generate(prompt);
+
+    return { value, source: "llm" };
+  }
+
+  private tryLookup(
+    profile: NonNullable<Awaited<ReturnType<KnowledgeService["getProfile"]>>>,
+    question: string
+  ): unknown | null {
+    const normalized = question.toLowerCase();
+    const key = extractLookupKey(normalized);
+
+    if (key === null) {
+      return null;
+    }
+
+    return this.knowledgeService.lookup(profile, key);
+  }
+
+  private async tryDerived(
+    profileId: string,
+    question: string
+  ): Promise<string | null> {
+    const summary = await this.knowledgeService.getSummary(profileId);
+    const normalized = question.toLowerCase();
+
+    if (normalized.includes("current employer") || normalized.includes("current company")) {
+      return summary.currentCompany ?? null;
+    }
+
+    if (normalized.includes("current title") || normalized.includes("current role")) {
+      return summary.currentTitle ?? null;
+    }
+
+    if (normalized.includes("years of experience") || normalized.includes("how many years")) {
+      return String(summary.totalYearsExperience);
+    }
+
+    if (normalized.includes("highest degree") || normalized.includes("highest education") || normalized.includes("what degree")) {
+      return summary.highestDegree ?? null;
+    }
+
+    return null;
+  }
+}
+
+function extractLookupKey(question: string): KnowledgeKey | null {
+  const mapping: Record<string, KnowledgeKey> = {
+    name: "name",
+    "full name": "name",
+    email: "email",
+    "e-mail": "email",
+    phone: "phone",
+    "phone number": "phone",
+    mobile: "phone",
+    website: "website",
+    "personal website": "website",
+    portfolio: "website",
+    linkedin: "linkedin",
+    github: "github",
+    skills: "skills",
+    "tech stack": "skills",
+    technologies: "skills",
+    education: "education",
+    experience: "experience",
+    projects: "projects",
+  };
+
+  for (const [phrase, key] of Object.entries(mapping)) {
+    if (question.includes(phrase)) {
+      return key;
+    }
+  }
+
+  return null;
+}
