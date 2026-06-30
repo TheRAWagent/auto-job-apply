@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react"
 import { MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { sendAutofillMessage } from "@/lib/extension-messaging"
 
 export interface Profile {
   id: string
@@ -87,6 +88,16 @@ export function ProfileCard({ profile }: ProfileCardProps) {
               }}
             >
               Manage
+            </button>
+            <button
+              type="button"
+              className="w-full rounded-md px-3 py-2 text-left text-sm text-popover-foreground hover:bg-muted"
+              onClick={() => {
+                setMenuOpen(false)
+                void sendAutofillMessage(profile.id)
+              }}
+            >
+              Autofill page
             </button>
           </div>
         )}

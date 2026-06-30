@@ -1,0 +1,83 @@
+import type { ProfileSchema } from "@/components/profile-form";
+
+export type CandidateProfile = ProfileSchema;
+
+export type KnowledgeKey =
+  | "name"
+  | "email"
+  | "phone"
+  | "website"
+  | "linkedin"
+  | "github"
+  | "skills"
+  | "education"
+  | "experience"
+  | "projects";
+
+export interface KnowledgeLookupResult<T = unknown> {
+  key: KnowledgeKey;
+  value: T | null;
+  found: boolean;
+}
+
+export type ProfileSection =
+  | "personal"
+  | "education"
+  | "experience"
+  | "projects"
+  | "skills";
+
+export type ClassificationType =
+  | "lookup"
+  | "derived"
+  | "narrative"
+  | "company"
+  | "unknown";
+
+export interface ClassificationResult {
+  type: ClassificationType;
+  confidence: number;
+  relevantSections: ProfileSection[];
+}
+
+export interface CandidateContext {
+  personal?: {
+    name: string;
+    email: string;
+    phone: string;
+    website: string | null;
+    linkedin: string | null;
+    github: string | null;
+  };
+  education?: CandidateProfile["education"];
+  experience?: CandidateProfile["experience"];
+  projects?: CandidateProfile["projects"];
+  skills?: CandidateProfile["skills"];
+}
+
+export interface Prompt {
+  system: string;
+  user: string;
+  temperature?: number;
+}
+
+export type AnswerSource = "lookup" | "derived" | "llm";
+
+export interface Answer {
+  value: string;
+  source: AnswerSource;
+}
+
+export interface JobContext {
+  companyName?: string;
+  jobTitle?: string;
+  jobDescription?: string;
+}
+
+export interface CandidateSummary {
+  currentTitle?: string;
+  currentCompany?: string;
+  totalYearsExperience: number;
+  highestDegree?: string;
+  skills: string[];
+}
