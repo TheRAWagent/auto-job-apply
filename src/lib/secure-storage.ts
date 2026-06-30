@@ -1,24 +1,12 @@
 import { storage } from 'webextension-polyfill';
-
-type LegacyProfile = {
-  personal: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-
-  education?: unknown[];
-  experience?: unknown[];
-  links?: Record<string, string>;
-};
+import { ProfileIndexedDB } from './profile-db';
+import type { ProfileSchema } from '@/components/profile-form';
 
 export type ApplicationProfile = {
   id: string;
   name: string;
-  pdfBase64?: string;
-  pdfUrl?: string;
-  markdown?: string;
-  markdownUrl?: string;
+  pdfBase64: string;
+  json: ProfileSchema;
   createdAt: number;
 };
 
@@ -31,11 +19,13 @@ type SecureStorageData = {
   encryptedProfile?: string;
   encryptedResume?: string;
   encryptedProfiles?: string;
+  encryptedProfileIds?: string;
 };
 
 export class SecureStorage {
   private encryptionKey: CryptoKey | null = null;
   private unlocked = false;
+  private profileDB = new ProfileIndexedDB();
 
   // ------------------------
   // Storage Helpers
@@ -50,6 +40,7 @@ export class SecureStorage {
       "encryptedProfile",
       "encryptedResume",
       "encryptedProfiles",
+      "encryptedProfileIds",
     ]);
 
     return result as SecureStorageData;
@@ -150,16 +141,40 @@ export class SecureStorage {
   // Profiles
   // ------------------------
 
+  async saveApplicationProfile(profile: ApplicationProfile) {
+    this.ensureUnlocked();
+
+    const encrypted = await this.encrypt(JSON.stringify(profile));
+    await this.profileDB.save(profile.id, encrypted);
+
+    const storage = await this.getStorage();
+    let ids: string[] = [];
+    if (storage.encryptedProfileIds) {
+      ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds));
+    }
+
+    if (!ids.includes(profile.id)) {
+      ids.push(profile.id);
+      await this.setStorage({
+        encryptedProfileIds: await this.encrypt(JSON.stringify(ids)),
+      });
+    }
+  }
+
   async saveProfiles(profiles: ApplicationProfile[]) {
     this.ensureUnlocked();
 
-    const encrypted = await this.encrypt(
-      JSON.stringify(profiles)
-    );
+    for (const profile of profiles) {
+      const encrypted = await this.encrypt(JSON.stringify(profile));
+      await this.profileDB.save(profile.id, encrypted);
+    }
 
+    const ids = profiles.map((profile) => profile.id);
     await this.setStorage({
-      encryptedProfiles: encrypted,
+      encryptedProfileIds: await this.encrypt(JSON.stringify(ids)),
     });
+
+    await this.profileDB.deleteAllExcept(new Set(ids));
   }
 
   async getProfiles(): Promise<ApplicationProfile[]> {
@@ -167,15 +182,67 @@ export class SecureStorage {
 
     const storage = await this.getStorage();
 
-    if (!storage.encryptedProfiles) {
+    if (!storage.encryptedProfileIds) {
       return [];
     }
 
-    const decrypted = await this.decrypt(
-      storage.encryptedProfiles
-    );
+    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+    if (ids.length === 0) {
+      return [];
+    }
 
-    return JSON.parse(decrypted);
+    const encryptedById = await this.profileDB.getAll(ids);
+    const profiles: ApplicationProfile[] = [];
+
+    for (const id of ids) {
+      const encrypted = encryptedById[id];
+      if (!encrypted) {
+        continue;
+      }
+      const decrypted = await this.decrypt(encrypted);
+      profiles.push(JSON.parse(decrypted));
+    }
+
+    return profiles;
+  }
+
+  async getApplicationProfile(id: string): Promise<ApplicationProfile | null> {
+    this.ensureUnlocked();
+
+    const storage = await this.getStorage();
+    if (!storage.encryptedProfileIds) {
+      return null;
+    }
+
+    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+    if (!ids.includes(id)) {
+      return null;
+    }
+
+    const encrypted = await this.profileDB.get(id);
+    if (!encrypted) {
+      return null;
+    }
+
+    const decrypted = await this.decrypt(encrypted);
+    return JSON.parse(decrypted) as ApplicationProfile;
+  }
+
+  async deleteApplicationProfile(id: string) {
+    this.ensureUnlocked();
+
+    await this.profileDB.delete(id);
+
+    const storage = await this.getStorage();
+    if (!storage.encryptedProfileIds) {
+      return;
+    }
+
+    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+    const nextIds = ids.filter((profileId) => profileId !== id);
+    await this.setStorage({
+      encryptedProfileIds: await this.encrypt(JSON.stringify(nextIds)),
+    });
   }
 
   // ------------------------
@@ -224,38 +291,6 @@ export class SecureStorage {
     }
 
     return this.decrypt(storage.encryptedApiBaseUrl);
-  }
-
-  // ------------------------
-  // Profile
-  // ------------------------
-
-  async saveProfile(profile: LegacyProfile) {
-    this.ensureUnlocked();
-
-    const encrypted = await this.encrypt(
-      JSON.stringify(profile)
-    );
-
-    await this.setStorage({
-      encryptedProfile: encrypted,
-    });
-  }
-
-  async getProfile(): Promise<LegacyProfile | null> {
-    this.ensureUnlocked();
-
-    const storage = await this.getStorage();
-
-    if (!storage.encryptedProfile) {
-      return null;
-    }
-
-    const decrypted = await this.decrypt(
-      storage.encryptedProfile
-    );
-
-    return JSON.parse(decrypted);
   }
 
   // ------------------------

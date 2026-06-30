@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { EmptyProfiles } from "@/components/empty-profiles"
+import { EmptyProfiles } from "@/components/home/empty-profiles"
 import { HomeFooter } from "@/components/home/footer"
 import { HomeHeader } from "@/components/home/header"
-import { ProfileCard, type Profile } from "@/components/profile-card"
+import { ProfileCard, type Profile } from "@/components/home/profile-card"
 import { useExtensionStore } from "@/store"
 
 function getInitials(name: string): string {
@@ -57,6 +57,7 @@ export function Home() {
     secureStorage
       .getProfiles()
       .then((items) => {
+        console.log(items);
         setProfiles(
           items.map((item) => ({
             id: item.id,

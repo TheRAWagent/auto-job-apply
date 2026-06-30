@@ -21,6 +21,7 @@ export default defineConfig({
       input: {
         main: path.resolve(__dirname, "index.html"),
         "create-profile": path.resolve(__dirname, "create-profile.html"),
+        "manage-profile": path.resolve(__dirname, "manage-profile.html"),
       },
     },
   },

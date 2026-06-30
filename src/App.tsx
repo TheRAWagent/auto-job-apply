@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { Home } from "@/pages/Home"
-import { Login } from "@/pages/Login"
+import { Home } from "@/pages/home"
+import { Login } from "@/pages/login"
+import { Settings } from "@/pages/settings"
 import { useExtensionStore } from "./store"
 import { Onboarding } from "./components/onboarding"
 import type { Page } from "./store/router-slice"
@@ -36,7 +37,7 @@ function App() {
       }
 
       setReady(true)
-      if (page === "home") {
+      if (page !== "login" && page !== "onboarding") {
         goToLogin()
       }
     }
@@ -51,6 +52,8 @@ function App() {
         return <Login />
       case "onboarding":
         return <Onboarding />
+      case "settings":
+        return <Settings />
       case "home":
       default:
         return <Home />

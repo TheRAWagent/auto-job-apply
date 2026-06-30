@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react"
-import { ArrowLeft, Check, Lock, Shield, X } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Lock,
+  Save,
+  Shield,
+  Trash2,
+  X,
+} from "lucide-react"
 import { useMutation } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,23 +25,56 @@ import {
   ProfileForm,
   emptyProfile,
   fileToBase64,
+  parseProfileJson,
   profileSchema,
   type ProfileSchema,
 } from "@/components/profile-form"
 
-export function CreateProfile() {
+function getProfileIdFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  return params.get("id")
+}
+
+export function ManageProfile() {
   const [storage] = useState(() => new SecureStorage())
   const [initialized, setInitialized] = useState<boolean | null>(null)
   const [unlocked, setUnlocked] = useState(false)
   const [password, setPassword] = useState("")
+  const [profileId, setProfileId] = useState<string | null>(null)
+  const [originalProfile, setOriginalProfile] = useState<ApplicationProfile | null>(null)
   const [name, setName] = useState("")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [profile, setProfile] = useState<ProfileSchema>(emptyProfile)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [showDeleteWarning, setShowDeleteWarning] = useState(false)
 
   useEffect(() => {
+    setProfileId(getProfileIdFromUrl())
     storage.isInitialized().then(setInitialized)
   }, [storage])
+
+  useEffect(() => {
+    if (!unlocked || !profileId) {
+      return
+    }
+
+    storage
+      .getApplicationProfile(profileId)
+      .then((item) => {
+        if (!item) {
+          setValidationError("Profile not found")
+          return
+        }
+
+        setOriginalProfile(item)
+        setName(item.name)
+        const parsed = parseProfileJson(item.json)
+        if (parsed) {
+          setProfile(parsed)
+        }
+      })
+      .catch(() => setValidationError("Failed to load profile"))
+  }, [unlocked, profileId, storage])
 
   const unlockMutation = useMutation({
     mutationFn: async (password: string) => {
@@ -52,23 +93,37 @@ export function CreateProfile() {
     onSuccess: () => setUnlocked(true),
   })
 
-  const submitMutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!pdfFile) {
-        throw new Error("Resume PDF is required")
+      if (!profileId || !originalProfile) {
+        throw new Error("Profile not loaded")
       }
 
       const parsed = profileSchema.parse(profile)
 
-      const applicationProfile: ApplicationProfile = {
-        id: crypto.randomUUID(),
+      const updatedProfile: ApplicationProfile = {
+        ...originalProfile,
         name: name.trim(),
-        pdfBase64: await fileToBase64(pdfFile),
         json: parsed,
         createdAt: Date.now(),
       }
 
-      await storage.saveApplicationProfile(applicationProfile)
+      if (pdfFile) {
+        updatedProfile.pdfBase64 = await fileToBase64(pdfFile)
+      }
+
+      await storage.saveApplicationProfile(updatedProfile)
+    },
+    onSuccess: () => window.close(),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!profileId) {
+        throw new Error("Profile not loaded")
+      }
+
+      await storage.deleteApplicationProfile(profileId)
     },
     onSuccess: () => window.close(),
   })
@@ -87,11 +142,6 @@ export function CreateProfile() {
       return
     }
 
-    if (!pdfFile) {
-      setValidationError("Please upload a resume PDF")
-      return
-    }
-
     const result = profileSchema.safeParse(profile)
     if (!result.success) {
       setValidationError(
@@ -100,7 +150,7 @@ export function CreateProfile() {
       return
     }
 
-    submitMutation.mutate()
+    saveMutation.mutate()
   }
 
   if (initialized === null) {
@@ -115,7 +165,7 @@ export function CreateProfile() {
           <h1 className="mb-2 text-xl font-semibold">Setup required</h1>
           <p className="mb-6 text-sm text-muted-foreground">
             Please complete the onboarding flow in the extension popup before
-            creating a profile.
+            managing a profile.
           </p>
           <Button onClick={() => window.close()}>Close</Button>
         </div>
@@ -136,7 +186,7 @@ export function CreateProfile() {
             Unlock SecureFill
           </h1>
           <p className="mb-6 text-center text-sm text-muted-foreground">
-            Enter your local password to create a profile.
+            Enter your local password to manage this profile.
           </p>
           <div className="space-y-4">
             <Input
@@ -183,7 +233,7 @@ export function CreateProfile() {
             >
               <ArrowLeft className="size-4 text-muted-foreground" />
             </Button>
-            <span className="font-semibold text-foreground">Create Profile</span>
+            <span className="font-semibold text-foreground">Manage Profile</span>
           </div>
           <Button
             variant="ghost"
@@ -213,7 +263,7 @@ export function CreateProfile() {
               <CardHeader>
                 <CardTitle>Profile Details</CardTitle>
                 <CardDescription>
-                  Enter your profile information. This will be stored as JSON.
+                  Update your profile information and resume.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -222,33 +272,86 @@ export function CreateProfile() {
                   onChange={setProfile}
                   pdfFile={pdfFile}
                   onPdfChange={setPdfFile}
+                  existingPdfName={originalProfile ? "resume.pdf" : null}
                 />
               </CardContent>
             </Card>
 
-            {(validationError || submitMutation.isError) && (
+            {showDeleteWarning && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 size-5 text-destructive" />
+                  <div className="flex-1 space-y-2">
+                    <p className="text-sm font-medium text-destructive">
+                      Delete this profile?
+                    </p>
+                    <p className="text-sm text-destructive/80">
+                      This action cannot be undone. Your profile data and resume
+                      will be permanently removed.
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => deleteMutation.mutate()}
+                      >
+                        {deleteMutation.isPending
+                          ? "Deleting..."
+                          : "Yes, delete"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowDeleteWarning(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(validationError || saveMutation.isError || deleteMutation.isError) && (
               <p className="text-sm text-destructive">
                 {validationError ||
-                  (submitMutation.error instanceof Error
-                    ? submitMutation.error.message
-                    : "Failed to save profile")}
+                  (saveMutation.error instanceof Error
+                    ? saveMutation.error.message
+                    : deleteMutation.error instanceof Error
+                      ? deleteMutation.error.message
+                      : "Failed to process request")}
               </p>
             )}
 
-            <Button
-              type="submit"
-              className="gap-2"
-              disabled={submitMutation.isPending}
-            >
-              {submitMutation.isPending ? (
-                "Saving..."
-              ) : (
-                <>
-                  <Check className="size-4" />
-                  Submit Profile
-                </>
-              )}
-            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button
+                type="submit"
+                className="flex-1 gap-2"
+                disabled={saveMutation.isPending}
+              >
+                {saveMutation.isPending ? (
+                  "Saving..."
+                ) : (
+                  <>
+                    <Save className="size-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="gap-2"
+                disabled={deleteMutation.isPending || showDeleteWarning}
+                onClick={() => setShowDeleteWarning(true)}
+              >
+                <Trash2 className="size-4" />
+                Delete Profile
+              </Button>
+            </div>
           </form>
         </main>
       </div>
