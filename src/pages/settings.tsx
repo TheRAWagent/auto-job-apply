@@ -3,16 +3,40 @@ import { ArrowLeft, Eye, EyeOff, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useExtensionStore } from "@/store"
+
+interface FetchedModel {
+  id: string;
+}
+
+interface ModelsResponse {
+  data?: FetchedModel[];
+  error?: { message: string };
+}
+
+type ModelFetchState = "idle" | "loading" | "done" | "error";
 
 export function Settings() {
   const secureStorage = useExtensionStore((state) => state.secureStorage)
-  const [apiBaseUrl, setApiBaseUrl] = useState("https://api.openai.com/v1")
   const isLoggedIn = useExtensionStore((state) => state.isLoggedIn)
   const goBack = useExtensionStore((state) => state.goBack)
   const goToLogin = useExtensionStore((state) => state.goToLogin)
 
+  const [apiBaseUrl, setApiBaseUrl] = useState("https://api.openai.com/v1")
   const [apiKey, setApiKey] = useState("")
+  const [savedModel, setSavedModel] = useState("")
+  const [selectedModel, setSelectedModel] = useState("")
+  const [models, setModels] = useState<string[]>([])
+  const [fetchState, setFetchState] = useState<ModelFetchState>("idle")
+  const [modelError, setModelError] = useState<string | null>(null)
+
   const [showApiKey, setShowApiKey] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -24,21 +48,26 @@ export function Settings() {
     }
 
     Promise.all([
-      
       secureStorage
-      .getApiKey()
-      .then((key) => {
-        setApiKey(key ?? "")
-      })
-      .catch(() => setApiKey("")),
+        .getApiKey()
+        .then((key) => {
+          setApiKey(key ?? "")
+        })
+        .catch(() => setApiKey("")),
       secureStorage
-      .getApiBaseUrl()
-      .then((url) => {
-        setApiBaseUrl(url ?? "https://api.openai.com/v1")
-      })
-      .catch(() => setApiBaseUrl("https://api.openai.com/v1")),
-    ])
-      .finally(() => setIsLoading(false))
+        .getApiBaseUrl()
+        .then((url) => {
+          setApiBaseUrl(url ?? "https://api.openai.com/v1")
+        })
+        .catch(() => setApiBaseUrl("https://api.openai.com/v1")),
+      secureStorage
+        .getModel()
+        .then((storedModel) => {
+          const model = storedModel ?? ""
+          setSavedModel(model)
+        })
+        .catch(() => setSavedModel("")),
+    ]).finally(() => setIsLoading(false))
   }, [isLoggedIn, secureStorage])
 
   useEffect(() => {
@@ -47,22 +76,85 @@ export function Settings() {
     }
   }, [isLoggedIn, goToLogin])
 
-  if (!isLoggedIn) {
-    return null
+  function resetModelFetchState(): void {
+    setFetchState("idle")
+    setModels([])
+  }
+
+  function updateApiKey(value: string): void {
+    setApiKey(value)
+    resetModelFetchState()
+  }
+
+  function updateApiBaseUrl(value: string): void {
+    setApiBaseUrl(value)
+    resetModelFetchState()
+  }
+
+  async function fetchModels(): Promise<void> {
+    if (fetchState === "loading" || fetchState === "done") {
+      return
+    }
+
+    if (!apiKey || !apiBaseUrl) {
+      setModelError("Enter an API key and base URL before selecting a model.")
+      return
+    }
+
+    setFetchState("loading")
+    setModelError(null)
+
+    try {
+      const baseUrl = apiBaseUrl.replace(/\/$/, "")
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      })
+
+      const data = (await response.json()) as ModelsResponse
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error?.message ?? `HTTP ${response.status}`)
+      }
+
+      const modelIds = (data.data ?? []).map((m) => m.id)
+      setModels(modelIds)
+      setFetchState("done")
+
+      if (savedModel && modelIds.includes(savedModel) && !selectedModel) {
+        setSelectedModel(savedModel)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to fetch models"
+      setModelError(message)
+      setFetchState("error")
+      setModels([])
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSaving(true)
     try {
-      await secureStorage.saveApiKey(apiKey)
+      await Promise.all([
+        secureStorage.saveApiKey(apiKey),
+        secureStorage.saveApiBaseUrl(apiBaseUrl),
+        secureStorage.saveModel(selectedModel),
+      ])
+      await secureStorage.syncSessionCredentials()
+      setSavedModel(selectedModel)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch {
-      alert("Failed to save API key. Please try again.")
+      alert("Failed to save settings. Please try again.")
     } finally {
       setIsSaving(false)
     }
+  }
+
+  if (!isLoggedIn) {
+    return null
   }
 
   return (
@@ -92,18 +184,7 @@ export function Settings() {
                 value={apiKey}
                 disabled={isLoading}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setApiKey(e.target.value)
-                }
-                className="pr-10"
-              />
-              <Input
-                id="api-base-url"
-                type="text"
-                placeholder="Enter API base URL"
-                value={apiBaseUrl}
-                disabled={isLoading}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setApiBaseUrl(e.target.value)
+                  updateApiKey(e.target.value)
                 }
                 className="pr-10"
               />
@@ -122,10 +203,68 @@ export function Settings() {
                 )}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Your API key is encrypted and stored locally in the browser.
-            </p>
           </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="api-base-url">API Base URL</Label>
+            <Input
+              id="api-base-url"
+              type="text"
+              placeholder="Enter API base URL"
+              value={apiBaseUrl}
+              disabled={isLoading}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                updateApiBaseUrl(e.target.value)
+              }
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="model">Model</Label>
+            <Select
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+              onOpenChange={(open) => {
+                if (open) {
+                  void fetchModels()
+                }
+              }}
+              disabled={isLoading || fetchState === "loading"}
+            >
+              <SelectTrigger id="model" className="w-full">
+                <SelectValue placeholder="Select a model" />
+              </SelectTrigger>
+              <SelectContent>
+                {fetchState === "idle" && (
+                  <SelectItem value="__fetch__" disabled>
+                    Click to load available models
+                  </SelectItem>
+                )}
+                {fetchState === "loading" && (
+                  <SelectItem value="__loading__" disabled>
+                    Loading models…
+                  </SelectItem>
+                )}
+                {fetchState === "error" && models.length === 0 && (
+                  <SelectItem value="__error__" disabled>
+                    Could not load models
+                  </SelectItem>
+                )}
+                {models.map((modelId) => (
+                  <SelectItem key={modelId} value={modelId}>
+                    {modelId}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {modelError && (
+              <p className="text-xs text-destructive">{modelError}</p>
+            )}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Your API key and base URL are encrypted and stored locally. The model choice is stored alongside them.
+          </p>
 
           <Button type="submit" disabled={isLoading || isSaving} className="gap-2">
             <Save className="size-4" />

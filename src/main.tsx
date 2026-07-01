@@ -7,9 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <div className='w-120'>
-        <App />
-      </div>
+      <App />
     </ThemeProvider>
   </StrictMode>,
 )

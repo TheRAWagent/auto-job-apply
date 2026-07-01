@@ -135,6 +135,36 @@ export class SecureStorage {
 
   async clearSession() {
     await storage.session.remove(this.SESSION_KEY);
+    await storage.session.remove("apiKey");
+    await storage.session.remove("apiBaseUrl");
+  }
+
+  /**
+   * Copies the decrypted API key and base URL into session storage so the
+   * background service worker can read them without the user's password.
+   */
+  async syncSessionCredentials(): Promise<void> {
+    this.ensureUnlocked();
+
+    const [apiKey, apiBaseUrl] = await Promise.all([
+      this.getApiKey(),
+      this.getApiBaseUrl(),
+    ]);
+
+    await storage.session.set({
+      apiKey: apiKey ?? "",
+      apiBaseUrl: apiBaseUrl ?? "",
+    });
+  }
+
+  async getSessionApiKey(): Promise<string | null> {
+    const result = await storage.session.get("apiKey");
+    return (result.apiKey as string | undefined) ?? null;
+  }
+
+  async getSessionApiBaseUrl(): Promise<string | null> {
+    const result = await storage.session.get("apiBaseUrl");
+    return (result.apiBaseUrl as string | undefined) ?? null;
   }
 
   // ------------------------
@@ -291,6 +321,17 @@ export class SecureStorage {
     }
 
     return this.decrypt(storage.encryptedApiBaseUrl);
+  }
+
+  async saveModel(model: string) {
+    // Model identifiers are not sensitive, so they are stored unencrypted so
+    // the background service worker can read them without the user's password.
+    await storage.local.set({ model });
+  }
+
+  async getModel(): Promise<string | null> {
+    const result = await storage.local.get("model");
+    return (result.model as string | undefined) ?? null;
   }
 
   // ------------------------

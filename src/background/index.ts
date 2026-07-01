@@ -1,3 +1,4 @@
+import { storage } from "webextension-polyfill";
 import { DefaultAnswerEngine } from "@/domain/answer-engine";
 import { DefaultPromptBuilder } from "@/domain/prompt-builder";
 import { RuleBasedKnowledgeClassifier } from "@/domain/knowledge-classifier";
@@ -21,15 +22,22 @@ const profileRepository = new ChromeStorageProfileRepository();
 const knowledgeService = new DefaultKnowledgeService(profileRepository);
 const cache = new InMemoryCacheAdapter();
 
-const answerEngine = new DefaultAnswerEngine({
-  classifier: new RuleBasedKnowledgeClassifier(),
-  contextSelector: new MinimalContextSelector(),
-  promptBuilder: new DefaultPromptBuilder(),
-  llmProvider: new OpenAICompatLLMProvider({
-    model: "gpt-4o-mini",
-  }),
-  knowledgeService,
-});
+async function getStoredModel(): Promise<string> {
+  const result = await storage.local.get("model");
+  return (result.model as string | undefined) ?? "gpt-4o-mini";
+}
+
+function createAnswerEngine(model: string): DefaultAnswerEngine {
+  return new DefaultAnswerEngine({
+    classifier: new RuleBasedKnowledgeClassifier(),
+    contextSelector: new MinimalContextSelector(),
+    promptBuilder: new DefaultPromptBuilder(),
+    llmProvider: new OpenAICompatLLMProvider({
+      model,
+    }),
+    knowledgeService,
+  });
+}
 
 export interface AnswerRequestMessage {
   type: "ANSWER_REQUEST";
@@ -82,6 +90,9 @@ async function handleAnswerRequest(
   if (cached !== null) {
     return cached;
   }
+
+  const model = await getStoredModel();
+  const answerEngine = createAnswerEngine(model);
 
   const answer = await answerEngine.answer(
     request.question,

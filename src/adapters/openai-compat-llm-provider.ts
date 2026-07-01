@@ -1,3 +1,5 @@
+import { generateText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LLMProvider } from "@/domain/interfaces";
 import type { Prompt } from "@/domain/types";
 import { DomainError } from "@/domain/errors";
@@ -24,30 +26,38 @@ export class OpenAICompatLLMProvider implements LLMProvider {
   }
 
   /**
-   * Generates an answer for the provided prompt.
+   * Generates an answer for the provided prompt using the Vercel AI SDK.
    *
-   * This method will eventually use the Vercel AI SDK (`ai` package) to stream
-   * or generate a completion from an OpenAI-compatible chat endpoint. The
-   * implementation will:
-   *
-   * 1. Read the API key and base URL from `SecureStorage`.
-   * 2. Construct a chat completion request using the system and user messages
-   *    from the prompt, plus the configured model and temperature.
-   * 3. Send the request to the provider's `/chat/completions` endpoint with
-   *    the bearer token set to the stored API key.
-   * 4. Parse the response and return the assistant's content trimmed of
-   *    surrounding whitespace.
-   * 5. Throw `LLMProviderError` on network failures, non-2xx responses, or
-   *    missing content.
-   *
-   * For now this method throws so callers know the integration is pending.
+   * The provider is configured from the API key and base URL stored in
+   * `SecureStorage`. It calls the provider's chat completions endpoint
+   * through the AI SDK instead of using raw `fetch`, which gives us
+   * retries, error handling, and provider abstractions for free.
    */
   async generate(prompt: Prompt): Promise<string> {
-    const apiKey = await this.storage.getApiKey();
-    const baseUrl = await this.storage.getApiBaseUrl();
+    const apiKey = await this.storage.getSessionApiKey();
+    const baseUrl = await this.storage.getSessionApiBaseUrl();
 
-    throw new LLMProviderError(
-      `LLM generation is not yet wired for model '${this.model}' at ${baseUrl ?? "<no base url>"} with key ${apiKey ? "<set>" : "<missing>"} (prompt length ${prompt.user.length}). The Vercel AI SDK will be integrated here in a later step.`
-    );
+    if (!apiKey) {
+      throw new LLMProviderError("API key is not configured or session has expired");
+    }
+
+    if (!baseUrl) {
+      throw new LLMProviderError("API base URL is not configured or session has expired");
+    }
+
+    const provider = createOpenAICompatible({
+      name: "custom-provider",
+      baseURL: baseUrl,
+      apiKey,
+    });
+
+    const { text } = await generateText({
+      model: provider.languageModel(this.model),
+      system: prompt.system,
+      prompt: prompt.user,
+      temperature: prompt.temperature ?? 0.5,
+    });
+
+    return text.trim();
   }
 }

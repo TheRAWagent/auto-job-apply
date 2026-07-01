@@ -17,6 +17,7 @@ export function Login() {
       return;
     }
     await storage.createSession(password);
+    await storage.syncSessionCredentials();
     setLoggedIn(true);
     goToHome()
   }
