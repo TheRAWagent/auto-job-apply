@@ -1,11 +1,14 @@
 import { getFieldError } from "@/lib/common"
 import type { SecureStorage } from "@/lib/secure-storage"
+import { logger } from "@/lib/logger"
 import { useExtensionStore } from "@/store"
 import { useState } from "react"
 import * as z from "zod/mini"
 import { Input } from "@/components/ui/input"
 import { Eye, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
+
+const LOG_CONTEXT = "onboarding-password";
 
 interface PasswordStepProps {
   storage: SecureStorage
@@ -53,8 +56,14 @@ export function PasswordStep({ storage, onContinue }: PasswordStepProps) {
       await storage.unlock(password)
       await storage.createSession(password)
       setLoggedIn(true)
+      logger.info(LOG_CONTEXT, "Onboarding password set and storage initialized")
       onContinue()
     } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to initialize storage during onboarding",
+        error,
+      })
       setErrors({
         password: error instanceof Error ? error.message : "Failed to save password",
       })
@@ -140,5 +149,4 @@ export function PasswordStep({ storage, onContinue }: PasswordStepProps) {
       </p>
     </div>
   )
-} 
-
+}

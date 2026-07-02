@@ -46,7 +46,7 @@ export class DefaultPromptBuilder implements PromptBuilder {
     return {
       system,
       user,
-      temperature: 0.5,
+      temperature: 1,
     };
   }
 }

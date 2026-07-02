@@ -2,6 +2,9 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useExtensionStore } from "@/store"
+import { logger } from "@/lib/logger"
+
+const LOG_CONTEXT = "login";
 
 export function Login() {
   const goToHome = useExtensionStore((state) => state.goToHome)
@@ -11,15 +14,28 @@ export function Login() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const isValid = await storage.unlock(password);
-    if (!isValid) {
-      alert("Invalid password. Please try again.");
-      return;
+    logger.info(LOG_CONTEXT, "Login attempt")
+
+    try {
+      const isValid = await storage.unlock(password);
+      if (!isValid) {
+        logger.warn(LOG_CONTEXT, "Login failed: invalid password")
+        alert("Invalid password. Please try again.");
+        return;
+      }
+      await storage.createSession(password);
+      await storage.syncSessionCredentials();
+      setLoggedIn(true);
+      logger.info(LOG_CONTEXT, "Login succeeded")
+      goToHome()
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Login failed",
+        error,
+      })
+      alert("An error occurred during login. Please try again.");
     }
-    await storage.createSession(password);
-    await storage.syncSessionCredentials();
-    setLoggedIn(true);
-    goToHome()
   }
 
   return (

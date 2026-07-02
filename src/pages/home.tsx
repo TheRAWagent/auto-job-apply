@@ -6,6 +6,9 @@ import { HomeFooter } from "@/components/home/footer"
 import { HomeHeader } from "@/components/home/header"
 import { ProfileCard, type Profile } from "@/components/home/profile-card"
 import { useExtensionStore } from "@/store"
+import { logger } from "@/lib/logger"
+
+const LOG_CONTEXT = "home";
 
 function getInitials(name: string): string {
   const words = name.trim().split(/\s+/)
@@ -57,7 +60,7 @@ export function Home() {
     secureStorage
       .getProfiles()
       .then((items) => {
-        console.log(items);
+        logger.info(LOG_CONTEXT, "Profiles loaded", { count: items.length })
         setProfiles(
           items.map((item) => ({
             id: item.id,
@@ -68,7 +71,14 @@ export function Home() {
           }))
         )
       })
-      .catch(() => setProfiles([]))
+      .catch((error) => {
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to load profiles",
+          error,
+        })
+        setProfiles([])
+      })
       .finally(() => setIsLoading(false))
   }, [isLoggedIn, secureStorage])
 
@@ -87,7 +97,7 @@ export function Home() {
       <div className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border bg-background shadow-sm">
         <HomeHeader />
 
-        <main className="flex flex-1 flex-col overflow-y-auto p-4">
+        <main className="flex-1 flex flex-col overflow-y-auto p-4">
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-xl font-semibold text-foreground">

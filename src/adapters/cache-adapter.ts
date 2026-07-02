@@ -1,4 +1,7 @@
 import type { Cache } from "@/domain/interfaces";
+import { logger } from "@/lib/logger";
+
+const LOG_CONTEXT = "cache";
 
 interface CacheEntry<T> {
   value: T;
@@ -21,18 +24,31 @@ export class InMemoryCacheAdapter implements Cache {
    * service worker restarts.
    */
   async get<T = unknown>(key: string): Promise<T | null> {
-    const entry = this.store.get(key);
+    try {
+      const entry = this.store.get(key);
 
-    if (entry === undefined) {
+      if (entry === undefined) {
+        logger.debug(LOG_CONTEXT, "Cache miss", { key });
+        return null;
+      }
+
+      if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
+        this.store.delete(key);
+        logger.debug(LOG_CONTEXT, "Cache entry expired", { key });
+        return null;
+      }
+
+      logger.debug(LOG_CONTEXT, "Cache hit", { key });
+      return entry.value as T;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to read cache",
+        error,
+        extra: { key },
+      });
       return null;
     }
-
-    if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
-      this.store.delete(key);
-      return null;
-    }
-
-    return entry.value as T;
   }
 
   /**
@@ -48,8 +64,18 @@ export class InMemoryCacheAdapter implements Cache {
     value: T,
     ttlMs?: number
   ): Promise<void> {
-    const expiresAt = ttlMs !== undefined ? Date.now() + ttlMs : null;
-    this.store.set(key, { value, expiresAt });
+    try {
+      const expiresAt = ttlMs !== undefined ? Date.now() + ttlMs : null;
+      this.store.set(key, { value, expiresAt });
+      logger.debug(LOG_CONTEXT, "Cache entry set", { key, expiresAt });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to set cache",
+        error,
+        extra: { key },
+      });
+    }
   }
 
   /**
@@ -59,6 +85,16 @@ export class InMemoryCacheAdapter implements Cache {
    * `chrome.storage.local`.
    */
   async delete(key: string): Promise<void> {
-    this.store.delete(key);
+    try {
+      this.store.delete(key);
+      logger.debug(LOG_CONTEXT, "Cache entry deleted", { key });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to delete cache",
+        error,
+        extra: { key },
+      });
+    }
   }
 }

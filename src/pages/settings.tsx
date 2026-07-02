@@ -11,6 +11,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useExtensionStore } from "@/store"
+import { logger } from "@/lib/logger"
+
+const LOG_CONTEXT = "settings";
 
 interface FetchedModel {
   id: string;
@@ -53,20 +56,41 @@ export function Settings() {
         .then((key) => {
           setApiKey(key ?? "")
         })
-        .catch(() => setApiKey("")),
+        .catch((error) => {
+          logger.reportError({
+            context: LOG_CONTEXT,
+            message: "Failed to load API key",
+            error,
+          })
+          setApiKey("")
+        }),
       secureStorage
         .getApiBaseUrl()
         .then((url) => {
           setApiBaseUrl(url ?? "https://api.openai.com/v1")
         })
-        .catch(() => setApiBaseUrl("https://api.openai.com/v1")),
+        .catch((error) => {
+          logger.reportError({
+            context: LOG_CONTEXT,
+            message: "Failed to load API base URL",
+            error,
+          })
+          setApiBaseUrl("https://api.openai.com/v1")
+        }),
       secureStorage
         .getModel()
         .then((storedModel) => {
           const model = storedModel ?? ""
           setSavedModel(model)
         })
-        .catch(() => setSavedModel("")),
+        .catch((error) => {
+          logger.reportError({
+            context: LOG_CONTEXT,
+            message: "Failed to load model",
+            error,
+          })
+          setSavedModel("")
+        }),
     ]).finally(() => setIsLoading(false))
   }, [isLoggedIn, secureStorage])
 
@@ -121,12 +145,18 @@ export function Settings() {
       const modelIds = (data.data ?? []).map((m) => m.id)
       setModels(modelIds)
       setFetchState("done")
+      logger.info(LOG_CONTEXT, "Models fetched", { count: modelIds.length })
 
       if (savedModel && modelIds.includes(savedModel) && !selectedModel) {
         setSelectedModel(savedModel)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to fetch models"
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to fetch models",
+        error,
+      })
       setModelError(message)
       setFetchState("error")
       setModels([])
@@ -136,6 +166,7 @@ export function Settings() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsSaving(true)
+    logger.info(LOG_CONTEXT, "Saving settings")
     try {
       await Promise.all([
         secureStorage.saveApiKey(apiKey),
@@ -145,8 +176,14 @@ export function Settings() {
       await secureStorage.syncSessionCredentials()
       setSavedModel(selectedModel)
       setSaved(true)
+      logger.info(LOG_CONTEXT, "Settings saved")
       setTimeout(() => setSaved(false), 2000)
-    } catch {
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save settings",
+        error,
+      })
       alert("Failed to save settings. Please try again.")
     } finally {
       setIsSaving(false)

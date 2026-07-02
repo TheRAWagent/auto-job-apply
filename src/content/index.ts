@@ -1,5 +1,46 @@
 import type { AnswerRequestMessage, BackgroundMessage } from "@/background";
 
+const LOG_CONTEXT = "content";
+
+/**
+ * Lightweight content-script logger.
+ *
+ * The content script runs in an isolated world where shared module imports can
+ * fail at runtime, so it uses plain console methods with a consistent prefix
+ * instead of importing the shared logger.
+ */
+function logDebug(message: string, extra?: Record<string, unknown>): void {
+  console.debug(`[AutoJobApply:${LOG_CONTEXT}]`, message, extra ?? "");
+}
+
+function logInfo(message: string, extra?: Record<string, unknown>): void {
+  console.info(`[AutoJobApply:${LOG_CONTEXT}]`, message, extra ?? "");
+}
+
+function logWarn(message: string, extra?: Record<string, unknown>): void {
+  console.warn(`[AutoJobApply:${LOG_CONTEXT}]`, message, extra ?? "");
+}
+
+function logError(message: string, extra?: Record<string, unknown>): void {
+  console.error(`[AutoJobApply:${LOG_CONTEXT}]`, message, extra ?? "");
+}
+
+function reportError(message: string, error: unknown, extra?: Record<string, unknown>): void {
+  const report: Record<string, unknown> = { ...extra };
+
+  if (error instanceof Error) {
+    report.originalError = {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  } else if (error !== undefined) {
+    report.originalError = error;
+  }
+
+  logError(message, report);
+}
+
 /**
  * Content script entry point.
  *
@@ -29,31 +70,41 @@ interface DetectedField {
  * their associated labels and inferred question text.
  */
 function detectFields(): DetectedField[] {
-  const fields: DetectedField[] = [];
+  try {
+    const fields: DetectedField[] = [];
 
-  const inputs = document.querySelectorAll(
-    "input:not([type='hidden']):not([type='submit']):not([type='button']), textarea, select"
-  );
+    const inputs = document.querySelectorAll(
+      "input:not([type='hidden']):not([type='submit']):not([type='button']), textarea, select"
+    );
 
-  for (const element of inputs) {
-    if (
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLTextAreaElement ||
-      element instanceof HTMLSelectElement
-    ) {
-      const label = extractLabel(element);
-      const question = label || element.getAttribute("placeholder") || "";
+    for (const element of inputs) {
+      if (
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement
+      ) {
+        const label = extractLabel(element);
+        const question = label || element.getAttribute("placeholder") || "";
 
-      fields.push({
-        element,
-        label,
-        question,
-        type: inferFieldType(element),
-      });
+        fields.push({
+          element,
+          label,
+          question,
+          type: inferFieldType(element),
+        });
+      }
     }
-  }
 
-  return fields;
+    logInfo("Detected form fields", {
+      count: fields.length,
+      url: window.location.href,
+    });
+
+    return fields;
+  } catch (error) {
+    reportError("Failed to detect form fields", error, { url: window.location.href });
+    return [];
+  }
 }
 
 /**
@@ -66,29 +117,34 @@ function detectFields(): DetectedField[] {
 function extractLabel(
   element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
 ): string {
-  const id = element.id;
+  try {
+    const id = element.id;
 
-  if (id) {
-    const label = document.querySelector(`label[for="${id}"]`);
-    if (label) {
-      return label.textContent?.trim() ?? "";
+    if (id) {
+      const label = document.querySelector(`label[for="${id}"]`);
+      if (label) {
+        return label.textContent?.trim() ?? "";
+      }
     }
-  }
 
-  const parentLabel = element.closest("label");
-  if (parentLabel) {
-    return parentLabel.textContent?.trim() ?? "";
-  }
-
-  const labelledBy = element.getAttribute("aria-labelledby");
-  if (labelledBy) {
-    const label = document.getElementById(labelledBy);
-    if (label) {
-      return label.textContent?.trim() ?? "";
+    const parentLabel = element.closest("label");
+    if (parentLabel) {
+      return parentLabel.textContent?.trim() ?? "";
     }
-  }
 
-  return element.getAttribute("aria-label")?.trim() ?? "";
+    const labelledBy = element.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      const label = document.getElementById(labelledBy);
+      if (label) {
+        return label.textContent?.trim() ?? "";
+      }
+    }
+
+    return element.getAttribute("aria-label")?.trim() ?? "";
+  } catch (error) {
+    reportError("Failed to extract label for element", error, { tagName: element.tagName });
+    return "";
+  }
 }
 
 /**
@@ -133,29 +189,49 @@ function inferFieldType(
  * whose label matches the answer is checked.
  */
 function fillField(field: DetectedField, answer: string): void {
-  if (field.type === "textarea" || field.type === "text") {
-    field.element.value = answer;
-    field.element.dispatchEvent(new Event("input", { bubbles: true }));
-    field.element.dispatchEvent(new Event("change", { bubbles: true }));
-    return;
-  }
-
-  if (field.type === "select" && field.element instanceof HTMLSelectElement) {
-    const options = Array.from(field.element.options);
-    const match = options.find((option) =>
-      option.text.toLowerCase().includes(answer.toLowerCase())
-    );
-
-    if (match) {
-      field.element.value = match.value;
+  try {
+    if (field.type === "textarea" || field.type === "text") {
+      field.element.value = answer;
+      field.element.dispatchEvent(new Event("input", { bubbles: true }));
       field.element.dispatchEvent(new Event("change", { bubbles: true }));
+      logDebug("Filled text/textarea field", {
+        label: field.label,
+        questionLength: field.question.length,
+      });
+      return;
     }
 
-    return;
-  }
+    if (field.type === "select" && field.element instanceof HTMLSelectElement) {
+      const options = Array.from(field.element.options);
+      const match = options.find((option) =>
+        option.text.toLowerCase().includes(answer.toLowerCase())
+      );
 
-  // Radio and checkbox autofill will be implemented once answer formats are
-  // standardised (e.g., "yes", "true", option label).
+      if (match) {
+        field.element.value = match.value;
+        field.element.dispatchEvent(new Event("change", { bubbles: true }));
+        logDebug("Filled select field", {
+          label: field.label,
+          matchedOption: match.text,
+        });
+      } else {
+        logWarn("No matching option for select field", {
+          label: field.label,
+          answerLength: answer.length,
+          optionCount: options.length,
+        });
+      }
+
+      return;
+    }
+
+    logDebug("Skipped unsupported field type", {
+      type: field.type,
+      label: field.label,
+    });
+  } catch (error) {
+    reportError("Failed to fill field", error, { type: field.type, label: field.label });
+  }
 }
 
 /**
@@ -174,15 +250,40 @@ async function askBackground(
     profileId,
   };
 
-  const response = (await chrome.runtime.sendMessage(message)) as BackgroundMessage;
+  logDebug("Sending ANSWER_REQUEST to background", {
+    profileId,
+    questionLength: question.length,
+  });
+
+  let response: BackgroundMessage;
+  try {
+    response = (await chrome.runtime.sendMessage(message)) as BackgroundMessage;
+  } catch (error) {
+    reportError("Failed to send message to background", error, { profileId });
+    throw new Error("Could not reach background service worker", { cause: error });
+  }
 
   if (response.type === "ANSWER_ERROR") {
+    logWarn("Background returned answer error", {
+      profileId,
+      error: response.error,
+    });
     throw new Error(response.error);
   }
 
   if (response.type !== "ANSWER_RESPONSE") {
+    logWarn("Unexpected background response type", {
+      profileId,
+      type: response.type,
+    });
     throw new Error("Unexpected response from background");
   }
+
+  logDebug("Received answer from background", {
+    profileId,
+    source: response.source,
+    answerLength: response.answer.length,
+  });
 
   return { answer: response.answer, source: response.source };
 }
@@ -195,26 +296,39 @@ async function askBackground(
  *    etc.), request an answer from the background worker and fill the field.
  * 3. For open-ended or complex fields, collect them and either fill them
  *    immediately or present them to the user for review.
- *
- * In the current iteration this logs detected fields to the console. Full
- * autofill will be enabled once the background messaging and answer formats
- * are validated end-to-end.
  */
 async function runAutofill(profileId: string): Promise<void> {
+  logInfo("Starting autofill", { profileId, url: window.location.href });
+
   const fields = detectFields();
+  let filledCount = 0;
+  let skippedCount = 0;
 
   for (const field of fields) {
     if (!field.question) {
+      skippedCount++;
       continue;
     }
 
     try {
       const { answer } = await askBackground(field.question, profileId);
       fillField(field, answer);
+      filledCount++;
     } catch (error) {
-      console.error("Failed to fill field:", field.question, error);
+      reportError("Failed to fill field", error, {
+        label: field.label,
+        questionLength: field.question.length,
+      });
+      skippedCount++;
     }
   }
+
+  logInfo("Autofill complete", {
+    profileId,
+    filledCount,
+    skippedCount,
+    totalFields: fields.length,
+  });
 }
 
 interface AutofillMessage {
@@ -223,8 +337,14 @@ interface AutofillMessage {
 }
 
 chrome.runtime.onMessage.addListener((message: AutofillMessage) => {
+  logDebug("Received runtime message", { type: message.type });
+
   if (message.type === "AUTO_FILL") {
-    void runAutofill(message.profileId);
+    runAutofill(message.profileId).catch((error) => {
+      reportError("Autofill failed", error, { profileId: message.profileId });
+    });
+  } else {
+    logWarn("Ignoring unknown runtime message", { type: message.type });
   }
 
   return false;
@@ -235,3 +355,5 @@ chrome.runtime.onMessage.addListener((message: AutofillMessage) => {
 (window as unknown as Record<string, unknown>).autoJobApply = {
   runAutofill,
 };
+
+logInfo("Content script loaded", { url: window.location.href });

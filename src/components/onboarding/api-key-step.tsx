@@ -1,10 +1,13 @@
 import { getFieldError } from "@/lib/common"
 import type { SecureStorage } from "@/lib/secure-storage"
+import { logger } from "@/lib/logger"
 import { Bot, Key } from "lucide-react"
 import { useState } from "react"
 import * as z from "zod/mini"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+
+const LOG_CONTEXT = "onboarding-api-key";
 
 interface ApiKeyStepProps {
   storage: SecureStorage
@@ -36,8 +39,15 @@ export function ApiKeyStep({ storage, onFinish }: ApiKeyStepProps) {
     try {
       await storage.saveApiKey(apiKey)
       await storage.saveApiBaseUrl(apiBaseUrl)
+      await storage.syncSessionCredentials()
+      logger.info(LOG_CONTEXT, "API credentials saved during onboarding")
       onFinish()
     } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save API credentials during onboarding",
+        error,
+      })
       setErrors({
         apiKey: error instanceof Error ? error.message : "Failed to save credentials",
       })

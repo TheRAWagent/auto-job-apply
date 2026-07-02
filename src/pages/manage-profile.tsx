@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SecureStorage } from "@/lib/secure-storage"
 import type { ApplicationProfile } from "@/lib/secure-storage"
+import { logger } from "@/lib/logger"
 import {
   ProfileForm,
   emptyProfile,
@@ -29,6 +30,8 @@ import {
   profileSchema,
   type ProfileSchema,
 } from "@/components/profile-form"
+
+const LOG_CONTEXT = "manage-profile";
 
 function getProfileIdFromUrl(): string | null {
   const params = new URLSearchParams(window.location.search)
@@ -40,7 +43,7 @@ export function ManageProfile() {
   const [initialized, setInitialized] = useState<boolean | null>(null)
   const [unlocked, setUnlocked] = useState(false)
   const [password, setPassword] = useState("")
-  const [profileId, setProfileId] = useState<string | null>(null)
+  const [profileId] = useState<string | null>(() => getProfileIdFromUrl())
   const [originalProfile, setOriginalProfile] = useState<ApplicationProfile | null>(null)
   const [name, setName] = useState("")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
@@ -49,9 +52,22 @@ export function ManageProfile() {
   const [showDeleteWarning, setShowDeleteWarning] = useState(false)
 
   useEffect(() => {
-    setProfileId(getProfileIdFromUrl())
-    storage.isInitialized().then(setInitialized)
-  }, [storage])
+    logger.info(LOG_CONTEXT, "Profile ID resolved from URL", { profileId })
+
+    storage.isInitialized()
+      .then((value) => {
+        setInitialized(value)
+        logger.info(LOG_CONTEXT, "Storage initialization checked", { initialized: value })
+      })
+      .catch((error) => {
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to check storage initialization",
+          error,
+        })
+        setInitialized(false)
+      })
+  }, [storage, profileId])
 
   useEffect(() => {
     if (!unlocked || !profileId) {
@@ -63,6 +79,7 @@ export function ManageProfile() {
       .then((item) => {
         if (!item) {
           setValidationError("Profile not found")
+          logger.warn(LOG_CONTEXT, "Profile not found", { profileId })
           return
         }
 
@@ -72,8 +89,17 @@ export function ManageProfile() {
         if (parsed) {
           setProfile(parsed)
         }
+        logger.info(LOG_CONTEXT, "Profile loaded", { profileId })
       })
-      .catch(() => setValidationError("Failed to load profile"))
+      .catch((error) => {
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to load profile",
+          error,
+          extra: { profileId },
+        })
+        setValidationError("Failed to load profile")
+      })
   }, [unlocked, profileId, storage])
 
   const unlockMutation = useMutation({
@@ -90,7 +116,17 @@ export function ManageProfile() {
       await storage.createSession(password)
       return true
     },
-    onSuccess: () => setUnlocked(true),
+    onSuccess: () => {
+      logger.info(LOG_CONTEXT, "Storage unlocked")
+      setUnlocked(true)
+    },
+    onError: (error) => {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to unlock storage",
+        error,
+      })
+    },
   })
 
   const saveMutation = useMutation({
@@ -114,7 +150,18 @@ export function ManageProfile() {
 
       await storage.saveApplicationProfile(updatedProfile)
     },
-    onSuccess: () => window.close(),
+    onSuccess: () => {
+      logger.info(LOG_CONTEXT, "Profile saved", { profileId })
+      window.close()
+    },
+    onError: (error) => {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save profile",
+        error,
+        extra: { profileId },
+      })
+    },
   })
 
   const deleteMutation = useMutation({
@@ -125,7 +172,18 @@ export function ManageProfile() {
 
       await storage.deleteApplicationProfile(profileId)
     },
-    onSuccess: () => window.close(),
+    onSuccess: () => {
+      logger.info(LOG_CONTEXT, "Profile deleted", { profileId })
+      window.close()
+    },
+    onError: (error) => {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to delete profile",
+        error,
+        extra: { profileId },
+      })
+    },
   })
 
   const handleUnlock = () => {

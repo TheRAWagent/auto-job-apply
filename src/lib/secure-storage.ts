@@ -1,6 +1,9 @@
 import { storage } from 'webextension-polyfill';
 import { ProfileIndexedDB } from './profile-db';
+import { logger } from './logger';
 import type { ProfileSchema } from '@/components/profile-form';
+
+const LOG_CONTEXT = "secure-storage";
 
 export type ApplicationProfile = {
   id: string;
@@ -55,40 +58,64 @@ export class SecureStorage {
   // ------------------------
 
   async initialize(password: string) {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const passwordHash = await this.derivePasswordHash(password, salt);
+    try {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const passwordHash = await this.derivePasswordHash(password, salt);
 
-    await this.setStorage({
-      passwordHash: this.toBase64(new Uint8Array(passwordHash)),
-      salt: this.toBase64(salt),
-    });
+      await this.setStorage({
+        passwordHash: this.toBase64(new Uint8Array(passwordHash)),
+        salt: this.toBase64(salt),
+      });
+
+      logger.info(LOG_CONTEXT, "Storage initialized");
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to initialize storage",
+        error,
+      });
+      throw error;
+    }
   }
 
   async unlock(password: string): Promise<boolean> {
-    const storage = await this.getStorage();
+    try {
+      const storage = await this.getStorage();
 
-    if (!storage.passwordHash) {
-      throw new Error("Storage not initialized");
+      if (!storage.passwordHash) {
+        logger.warn(LOG_CONTEXT, "Unlock attempted before storage was initialized");
+        throw new Error("Storage not initialized");
+      }
+
+      const salt = this.fromBase64(storage.salt);
+      const expectedHash = this.fromBase64(storage.passwordHash);
+      const actualHash = await this.derivePasswordHash(password, salt);
+
+      if (!this.timingSafeEqual(actualHash, expectedHash)) {
+        logger.warn(LOG_CONTEXT, "Unlock failed: incorrect password");
+        return false;
+      }
+
+      this.encryptionKey = await this.deriveKey(password, salt);
+
+      this.unlocked = true;
+
+      logger.info(LOG_CONTEXT, "Storage unlocked");
+      return true;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to unlock storage",
+        error,
+      });
+      throw error;
     }
-
-    const salt = this.fromBase64(storage.salt);
-    const expectedHash = this.fromBase64(storage.passwordHash);
-    const actualHash = await this.derivePasswordHash(password, salt);
-
-    if (!this.timingSafeEqual(actualHash, expectedHash)) {
-      return false;
-    }
-
-    this.encryptionKey = await this.deriveKey(password, salt);
-
-    this.unlocked = true;
-
-    return true;
   }
 
   lock() {
     this.encryptionKey = null;
     this.unlocked = false;
+    logger.info(LOG_CONTEXT, "Storage locked");
   }
 
   isUnlocked() {
@@ -107,30 +134,50 @@ export class SecureStorage {
   private readonly SESSION_KEY = "securefill-session";
 
   async createSession(password: string, durationMs = 60 * 60 * 1000) {
-    await storage.session.set({
-      [this.SESSION_KEY]: {
-        password,
-        expiresAt: Date.now() + durationMs,
-      },
-    });
+    try {
+      await storage.session.set({
+        [this.SESSION_KEY]: {
+          password,
+          expiresAt: Date.now() + durationMs,
+        },
+      });
+      logger.info(LOG_CONTEXT, "Session created", { durationMs });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to create session",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getSessionPassword(): Promise<string | null> {
-    const result = await storage.session.get(this.SESSION_KEY);
-    const session = result[this.SESSION_KEY] as
-      | { password: string; expiresAt: number }
-      | undefined;
+    try {
+      const result = await storage.session.get(this.SESSION_KEY);
+      const session = result[this.SESSION_KEY] as
+        | { password: string; expiresAt: number }
+        | undefined;
 
-    if (!session) {
+      if (!session) {
+        return null;
+      }
+
+      if (Date.now() > session.expiresAt) {
+        await storage.session.remove(this.SESSION_KEY);
+        logger.debug(LOG_CONTEXT, "Session expired");
+        return null;
+      }
+
+      return session.password;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to read session password",
+        error,
+      });
       return null;
     }
-
-    if (Date.now() > session.expiresAt) {
-      await storage.session.remove(this.SESSION_KEY);
-      return null;
-    }
-
-    return session.password;
   }
 
   async clearSession() {
@@ -144,27 +191,60 @@ export class SecureStorage {
    * background service worker can read them without the user's password.
    */
   async syncSessionCredentials(): Promise<void> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const [apiKey, apiBaseUrl] = await Promise.all([
-      this.getApiKey(),
-      this.getApiBaseUrl(),
-    ]);
+      const [apiKey, apiBaseUrl] = await Promise.all([
+        this.getApiKey(),
+        this.getApiBaseUrl(),
+      ]);
 
-    await storage.session.set({
-      apiKey: apiKey ?? "",
-      apiBaseUrl: apiBaseUrl ?? "",
-    });
+      await storage.session.set({
+        apiKey: apiKey ?? "",
+        apiBaseUrl: apiBaseUrl ?? "",
+      });
+
+      logger.info(LOG_CONTEXT, "Session credentials synced");
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to sync session credentials",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getSessionApiKey(): Promise<string | null> {
-    const result = await storage.session.get("apiKey");
-    return (result.apiKey as string | undefined) ?? null;
+    try {
+      const result = await storage.session.get("apiKey");
+      const apiKey = (result.apiKey as string | undefined) ?? null;
+      logger.debug(LOG_CONTEXT, "Resolved session API key", { hasKey: !!apiKey });
+      return apiKey;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to read session API key",
+        error,
+      });
+      return null;
+    }
   }
 
   async getSessionApiBaseUrl(): Promise<string | null> {
-    const result = await storage.session.get("apiBaseUrl");
-    return (result.apiBaseUrl as string | undefined) ?? null;
+    try {
+      const result = await storage.session.get("apiBaseUrl");
+      const apiBaseUrl = (result.apiBaseUrl as string | undefined) ?? null;
+      logger.debug(LOG_CONTEXT, "Resolved session API base URL", { hasBaseUrl: !!apiBaseUrl });
+      return apiBaseUrl;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to read session API base URL",
+        error,
+      });
+      return null;
+    }
   }
 
   // ------------------------
@@ -172,22 +252,34 @@ export class SecureStorage {
   // ------------------------
 
   async saveApplicationProfile(profile: ApplicationProfile) {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const encrypted = await this.encrypt(JSON.stringify(profile));
-    await this.profileDB.save(profile.id, encrypted);
+      const encrypted = await this.encrypt(JSON.stringify(profile));
+      await this.profileDB.save(profile.id, encrypted);
 
-    const storage = await this.getStorage();
-    let ids: string[] = [];
-    if (storage.encryptedProfileIds) {
-      ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds));
-    }
+      const storage = await this.getStorage();
+      let ids: string[] = [];
+      if (storage.encryptedProfileIds) {
+        ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds));
+      }
 
-    if (!ids.includes(profile.id)) {
-      ids.push(profile.id);
-      await this.setStorage({
-        encryptedProfileIds: await this.encrypt(JSON.stringify(ids)),
+      if (!ids.includes(profile.id)) {
+        ids.push(profile.id);
+        await this.setStorage({
+          encryptedProfileIds: await this.encrypt(JSON.stringify(ids)),
+        });
+      }
+
+      logger.info(LOG_CONTEXT, "Application profile saved", { profileId: profile.id });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save application profile",
+        error,
+        extra: { profileId: profile.id },
       });
+      throw error;
     }
   }
 
@@ -208,71 +300,107 @@ export class SecureStorage {
   }
 
   async getProfiles(): Promise<ApplicationProfile[]> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const storage = await this.getStorage();
+      const storage = await this.getStorage();
 
-    if (!storage.encryptedProfileIds) {
-      return [];
-    }
-
-    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
-    if (ids.length === 0) {
-      return [];
-    }
-
-    const encryptedById = await this.profileDB.getAll(ids);
-    const profiles: ApplicationProfile[] = [];
-
-    for (const id of ids) {
-      const encrypted = encryptedById[id];
-      if (!encrypted) {
-        continue;
+      if (!storage.encryptedProfileIds) {
+        return [];
       }
-      const decrypted = await this.decrypt(encrypted);
-      profiles.push(JSON.parse(decrypted));
-    }
 
-    return profiles;
+      const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+      if (ids.length === 0) {
+        return [];
+      }
+
+      const encryptedById = await this.profileDB.getAll(ids);
+      const profiles: ApplicationProfile[] = [];
+
+      for (const id of ids) {
+        const encrypted = encryptedById[id];
+        if (!encrypted) {
+          logger.warn(LOG_CONTEXT, "Profile referenced but missing from IndexedDB", { profileId: id });
+          continue;
+        }
+        const decrypted = await this.decrypt(encrypted);
+        profiles.push(JSON.parse(decrypted));
+      }
+
+      logger.info(LOG_CONTEXT, "Loaded application profiles", { count: profiles.length });
+      return profiles;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to load application profiles",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getApplicationProfile(id: string): Promise<ApplicationProfile | null> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const storage = await this.getStorage();
-    if (!storage.encryptedProfileIds) {
-      return null;
+      const storage = await this.getStorage();
+      if (!storage.encryptedProfileIds) {
+        return null;
+      }
+
+      const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+      if (!ids.includes(id)) {
+        logger.debug(LOG_CONTEXT, "Profile not found in id list", { profileId: id });
+        return null;
+      }
+
+      const encrypted = await this.profileDB.get(id);
+      if (!encrypted) {
+        logger.warn(LOG_CONTEXT, "Profile referenced but missing from IndexedDB", { profileId: id });
+        return null;
+      }
+
+      const decrypted = await this.decrypt(encrypted);
+      logger.info(LOG_CONTEXT, "Loaded application profile", { profileId: id });
+      return JSON.parse(decrypted) as ApplicationProfile;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to load application profile",
+        error,
+        extra: { profileId: id },
+      });
+      throw error;
     }
-
-    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
-    if (!ids.includes(id)) {
-      return null;
-    }
-
-    const encrypted = await this.profileDB.get(id);
-    if (!encrypted) {
-      return null;
-    }
-
-    const decrypted = await this.decrypt(encrypted);
-    return JSON.parse(decrypted) as ApplicationProfile;
   }
 
   async deleteApplicationProfile(id: string) {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    await this.profileDB.delete(id);
+      await this.profileDB.delete(id);
 
-    const storage = await this.getStorage();
-    if (!storage.encryptedProfileIds) {
-      return;
+      const storage = await this.getStorage();
+      if (!storage.encryptedProfileIds) {
+        return;
+      }
+
+      const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
+      const nextIds = ids.filter((profileId) => profileId !== id);
+      await this.setStorage({
+        encryptedProfileIds: await this.encrypt(JSON.stringify(nextIds)),
+      });
+
+      logger.info(LOG_CONTEXT, "Application profile deleted", { profileId: id });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to delete application profile",
+        error,
+        extra: { profileId: id },
+      });
+      throw error;
     }
-
-    const ids = JSON.parse(await this.decrypt(storage.encryptedProfileIds)) as string[];
-    const nextIds = ids.filter((profileId) => profileId !== id);
-    await this.setStorage({
-      encryptedProfileIds: await this.encrypt(JSON.stringify(nextIds)),
-    });
   }
 
   // ------------------------
@@ -280,58 +408,122 @@ export class SecureStorage {
   // ------------------------
 
   async saveApiKey(apiKey: string) {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const encrypted = await this.encrypt(apiKey);
+      const encrypted = await this.encrypt(apiKey);
 
-    await this.setStorage({
-      encryptedApiKey: encrypted,
-    });
+      await this.setStorage({
+        encryptedApiKey: encrypted,
+      });
+
+      logger.info(LOG_CONTEXT, "API key saved");
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save API key",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getApiKey(): Promise<string | null> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const storage = await this.getStorage();
+      const storage = await this.getStorage();
 
-    if (!storage.encryptedApiKey) {
-      return null;
+      if (!storage.encryptedApiKey) {
+        return null;
+      }
+
+      logger.debug(LOG_CONTEXT, "API key retrieved");
+      return this.decrypt(storage.encryptedApiKey);
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to get API key",
+        error,
+      });
+      throw error;
     }
-
-    return this.decrypt(storage.encryptedApiKey);
   }
 
   async saveApiBaseUrl(apiBaseUrl: string) {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const encrypted = await this.encrypt(apiBaseUrl);
+      const encrypted = await this.encrypt(apiBaseUrl);
 
-    await this.setStorage({
-      encryptedApiBaseUrl: encrypted,
-    });
+      await this.setStorage({
+        encryptedApiBaseUrl: encrypted,
+      });
+
+      logger.info(LOG_CONTEXT, "API base URL saved");
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save API base URL",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getApiBaseUrl(): Promise<string | null> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const storage = await this.getStorage();
+      const storage = await this.getStorage();
 
-    if (!storage.encryptedApiBaseUrl) {
-      return null;
+      if (!storage.encryptedApiBaseUrl) {
+        return null;
+      }
+
+      logger.debug(LOG_CONTEXT, "API base URL retrieved");
+      return this.decrypt(storage.encryptedApiBaseUrl);
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to get API base URL",
+        error,
+      });
+      throw error;
     }
-
-    return this.decrypt(storage.encryptedApiBaseUrl);
   }
 
   async saveModel(model: string) {
-    // Model identifiers are not sensitive, so they are stored unencrypted so
-    // the background service worker can read them without the user's password.
-    await storage.local.set({ model });
+    try {
+      // Model identifiers are not sensitive, so they are stored unencrypted so
+      // the background service worker can read them without the user's password.
+      await storage.local.set({ model });
+      logger.info(LOG_CONTEXT, "Model saved", { model });
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save model",
+        error,
+        extra: { model },
+      });
+      throw error;
+    }
   }
 
   async getModel(): Promise<string | null> {
-    const result = await storage.local.get("model");
-    return (result.model as string | undefined) ?? null;
+    try {
+      const result = await storage.local.get("model");
+      const model = (result.model as string | undefined) ?? null;
+      logger.debug(LOG_CONTEXT, "Model retrieved", { model });
+      return model;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to get model",
+        error,
+      });
+      throw error;
+    }
   }
 
   // ------------------------
@@ -339,25 +531,46 @@ export class SecureStorage {
   // ------------------------
 
   async saveResumeMarkdown(markdown: string) {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const encrypted = await this.encrypt(markdown);
+      const encrypted = await this.encrypt(markdown);
 
-    await this.setStorage({
-      encryptedResume: encrypted,
-    });
+      await this.setStorage({
+        encryptedResume: encrypted,
+      });
+
+      logger.info(LOG_CONTEXT, "Resume markdown saved");
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to save resume markdown",
+        error,
+      });
+      throw error;
+    }
   }
 
   async getResumeMarkdown(): Promise<string | null> {
-    this.ensureUnlocked();
+    try {
+      this.ensureUnlocked();
 
-    const storage = await this.getStorage();
+      const storage = await this.getStorage();
 
-    if (!storage.encryptedResume) {
-      return null;
+      if (!storage.encryptedResume) {
+        return null;
+      }
+
+      logger.debug(LOG_CONTEXT, "Resume markdown retrieved");
+      return this.decrypt(storage.encryptedResume);
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to get resume markdown",
+        error,
+      });
+      throw error;
     }
-
-    return this.decrypt(storage.encryptedResume);
   }
 
   // ------------------------

@@ -6,6 +6,9 @@ import type {
   KnowledgeLookupResult,
 } from "./types";
 import { ProfileNotFoundError } from "./errors";
+import { logger } from "@/lib/logger";
+
+const LOG_CONTEXT = "knowledge-service";
 
 export type { KnowledgeKey, KnowledgeLookupResult };
 
@@ -17,29 +20,59 @@ export class DefaultKnowledgeService implements KnowledgeService {
   }
 
   async getProfile(profileId: string): Promise<CandidateProfile | null> {
-    return this.repository.getProfile(profileId);
+    try {
+      logger.debug(LOG_CONTEXT, "Fetching profile", { profileId });
+      return await this.repository.getProfile(profileId);
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to fetch profile",
+        error,
+        extra: { profileId },
+      });
+      throw error;
+    }
   }
 
   async getSummary(profileId: string): Promise<CandidateSummary> {
-    const profile = await this.getProfile(profileId);
+    try {
+      logger.debug(LOG_CONTEXT, "Generating profile summary", { profileId });
+      const profile = await this.getProfile(profileId);
 
-    if (!profile) {
-      throw new ProfileNotFoundError(profileId);
+      if (!profile) {
+        logger.warn(LOG_CONTEXT, "Profile not found for summary", { profileId });
+        throw new ProfileNotFoundError(profileId);
+      }
+
+      const currentExperience = profile.experience.find(
+        (exp) => exp.endDate === null
+      );
+
+      const highestEducation = profile.education.at(-1);
+
+      const summary: CandidateSummary = {
+        currentTitle: currentExperience?.title,
+        currentCompany: currentExperience?.company,
+        totalYearsExperience: this.calculateYearsOfExperience(profile.experience),
+        highestDegree: highestEducation?.degree,
+        skills: [...profile.skills],
+      };
+
+      logger.debug(LOG_CONTEXT, "Profile summary generated", {
+        profileId,
+        totalYearsExperience: summary.totalYearsExperience,
+      });
+
+      return summary;
+    } catch (error) {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to generate profile summary",
+        error,
+        extra: { profileId },
+      });
+      throw error;
     }
-
-    const currentExperience = profile.experience.find(
-      (exp) => exp.endDate === null
-    );
-
-    const highestEducation = profile.education.at(-1);
-
-    return {
-      currentTitle: currentExperience?.title,
-      currentCompany: currentExperience?.company,
-      totalYearsExperience: this.calculateYearsOfExperience(profile.experience),
-      highestDegree: highestEducation?.degree,
-      skills: [...profile.skills],
-    };
   }
 
   lookup(profile: CandidateProfile, key: string): unknown | null {
@@ -90,10 +123,27 @@ export class DefaultKnowledgeService implements KnowledgeService {
     let totalMilliseconds = 0;
 
     for (const experience of experiences) {
-      const start = new Date(experience.startDate);
-      const end = experience.endDate ? new Date(experience.endDate) : new Date();
+      try {
+        const start = new Date(experience.startDate);
+        const end = experience.endDate ? new Date(experience.endDate) : new Date();
 
-      totalMilliseconds += end.getTime() - start.getTime();
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          logger.warn(LOG_CONTEXT, "Invalid experience date", {
+            startDate: experience.startDate,
+            endDate: experience.endDate,
+          });
+          continue;
+        }
+
+        totalMilliseconds += end.getTime() - start.getTime();
+      } catch (error) {
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to calculate experience duration",
+          error,
+          extra: { experience },
+        });
+      }
     }
 
     const years = totalMilliseconds / (1000 * 60 * 60 * 24 * 365.25);

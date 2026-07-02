@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SecureStorage } from "@/lib/secure-storage"
 import type { ApplicationProfile } from "@/lib/secure-storage"
+import { logger } from "@/lib/logger"
 import {
   ProfileForm,
   emptyProfile,
@@ -20,6 +21,8 @@ import {
   profileSchema,
   type ProfileSchema,
 } from "@/components/profile-form"
+
+const LOG_CONTEXT = "create-profile";
 
 export function CreateProfile() {
   const [storage] = useState(() => new SecureStorage())
@@ -32,7 +35,19 @@ export function CreateProfile() {
   const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
-    storage.isInitialized().then(setInitialized)
+    storage.isInitialized()
+      .then((value) => {
+        setInitialized(value)
+        logger.info(LOG_CONTEXT, "Storage initialization checked", { initialized: value })
+      })
+      .catch((error) => {
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to check storage initialization",
+          error,
+        })
+        setInitialized(false)
+      })
   }, [storage])
 
   const unlockMutation = useMutation({
@@ -49,7 +64,17 @@ export function CreateProfile() {
       await storage.createSession(password)
       return true
     },
-    onSuccess: () => setUnlocked(true),
+    onSuccess: () => {
+      logger.info(LOG_CONTEXT, "Storage unlocked")
+      setUnlocked(true)
+    },
+    onError: (error) => {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to unlock storage",
+        error,
+      })
+    },
   })
 
   const submitMutation = useMutation({
@@ -69,8 +94,19 @@ export function CreateProfile() {
       }
 
       await storage.saveApplicationProfile(applicationProfile)
+      return applicationProfile.id
     },
-    onSuccess: () => window.close(),
+    onSuccess: (profileId) => {
+      logger.info(LOG_CONTEXT, "Profile created", { profileId })
+      window.close()
+    },
+    onError: (error) => {
+      logger.reportError({
+        context: LOG_CONTEXT,
+        message: "Failed to create profile",
+        error,
+      })
+    },
   })
 
   const handleUnlock = () => {
@@ -226,26 +262,28 @@ export function CreateProfile() {
               </CardContent>
             </Card>
 
-            {(validationError || submitMutation.isError) && (
+            {validationError && (
+              <p className="text-sm text-destructive">{validationError}</p>
+            )}
+            {submitMutation.isError && (
               <p className="text-sm text-destructive">
-                {validationError ||
-                  (submitMutation.error instanceof Error
-                    ? submitMutation.error.message
-                    : "Failed to save profile")}
+                {submitMutation.error instanceof Error
+                  ? submitMutation.error.message
+                  : "Failed to save profile"}
               </p>
             )}
 
             <Button
               type="submit"
-              className="gap-2"
               disabled={submitMutation.isPending}
+              className="gap-2"
             >
               {submitMutation.isPending ? (
                 "Saving..."
               ) : (
                 <>
                   <Check className="size-4" />
-                  Submit Profile
+                  Create Profile
                 </>
               )}
             </Button>
