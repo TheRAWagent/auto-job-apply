@@ -31,9 +31,12 @@ export const projectSchema = z.object({
 })
 
 export const profileSchema = z.object({
-  name: z.string().min(1, "Name is required"),
+  firstName: z.string().min(1, "First name is required"),
+  middleName: z.string().nullable(),
+  lastName: z.string().min(1, "Last name is required"),
   email: z.string().email("Valid email is required"),
-  phone: z.string().min(1, "Phone is required"),
+  countryCode: z.string().min(1, "Country code is required"),
+  phoneNumber: z.string().min(1, "Phone number is required"),
   website: z.string().nullable(),
   linkedin: z.string().nullable(),
   github: z.string().nullable(),
@@ -56,9 +59,12 @@ export function fileToBase64(file: File): Promise<string> {
 
 export function emptyProfile(): ProfileSchema {
   return {
-    name: "",
+    firstName: "",
+    middleName: null,
+    lastName: "",
     email: "",
-    phone: "",
+    countryCode: "",
+    phoneNumber: "",
     website: null,
     linkedin: null,
     github: null,
@@ -218,13 +224,31 @@ export function ProfileForm({
         )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor="full-name">Full Name</Label>
+          <Label htmlFor="first-name">First Name</Label>
           <Input
-            id="full-name"
-            value={profile.name}
-            onChange={(e) => updateField("name", e.target.value)}
+            id="first-name"
+            value={profile.firstName}
+            onChange={(e) => updateField("firstName", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="middle-name">Middle Name</Label>
+          <Input
+            id="middle-name"
+            value={profile.middleName ?? ""}
+            onChange={(e) =>
+              updateField("middleName", e.target.value ? e.target.value : null)
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="last-name">Last Name</Label>
+          <Input
+            id="last-name"
+            value={profile.lastName}
+            onChange={(e) => updateField("lastName", e.target.value)}
           />
         </div>
         <div className="space-y-2">
@@ -237,11 +261,21 @@ export function ProfileForm({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="phone">Phone</Label>
+          <Label htmlFor="country-code">Country Code</Label>
           <Input
-            id="phone"
-            value={profile.phone}
-            onChange={(e) => updateField("phone", e.target.value)}
+            id="country-code"
+            placeholder="+1"
+            value={profile.countryCode}
+            onChange={(e) => updateField("countryCode", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone-number">Phone Number</Label>
+          <Input
+            id="phone-number"
+            type="tel"
+            value={profile.phoneNumber}
+            onChange={(e) => updateField("phoneNumber", e.target.value)}
           />
         </div>
         <div className="space-y-2">

@@ -138,13 +138,20 @@ export class DefaultAnswerEngine implements AnswerEngine {
 
 function extractLookupKey(question: string): KnowledgeKey | null {
   const mapping: Record<string, KnowledgeKey> = {
-    name: "name",
     "full name": "name",
+    "first name": "firstName",
+    "given name": "firstName",
+    "middle name": "middleName",
+    "last name": "lastName",
+    surname: "lastName",
+    name: "name",
     email: "email",
     "e-mail": "email",
+    "country code": "countryCode",
+    "phone number": "phoneNumber",
+    "mobile number": "phoneNumber",
+    mobile: "phoneNumber",
     phone: "phone",
-    "phone number": "phone",
-    mobile: "phone",
     website: "website",
     "personal website": "website",
     portfolio: "website",

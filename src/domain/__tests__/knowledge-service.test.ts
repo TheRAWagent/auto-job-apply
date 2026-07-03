@@ -34,7 +34,12 @@ describe("DefaultKnowledgeService", () => {
 
   it("looks up top-level keys", () => {
     expect(service.lookup(profile, "name")).toBe("Alex Rivera");
+    expect(service.lookup(profile, "firstName")).toBe("Alex");
+    expect(service.lookup(profile, "lastName")).toBe("Rivera");
     expect(service.lookup(profile, "email")).toBe("alex@example.com");
+    expect(service.lookup(profile, "phone")).toBe("+1555-1234");
+    expect(service.lookup(profile, "countryCode")).toBe("+1");
+    expect(service.lookup(profile, "phoneNumber")).toBe("555-1234");
     expect(service.lookup(profile, "skills")).toEqual(["TypeScript", "React", "Node.js"]);
   });
 

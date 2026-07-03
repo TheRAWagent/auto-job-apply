@@ -14,9 +14,14 @@ describe("MinimalContextSelector", () => {
     });
 
     expect(context.personal).toEqual({
-      name: profile.name,
+      fullName: "Alex Rivera",
+      firstName: profile.firstName,
+      middleName: profile.middleName,
+      lastName: profile.lastName,
       email: profile.email,
-      phone: profile.phone,
+      phone: "+1555-1234",
+      countryCode: profile.countryCode,
+      phoneNumber: profile.phoneNumber,
       website: profile.website,
       linkedin: profile.linkedin,
       github: profile.github,

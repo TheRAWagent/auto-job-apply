@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { ProfileNotFoundError } from "./errors";
 import { logger } from "@/lib/logger";
+import { getFullName, getFullPhoneNumber } from "./profile-utils";
 
 const LOG_CONTEXT = "knowledge-service";
 
@@ -82,8 +83,20 @@ export class DefaultKnowledgeService implements KnowledgeService {
 
     switch (key) {
       case "name":
-      case "email":
+        return getFullName(profile);
+      case "firstName":
+        return profile.firstName;
+      case "middleName":
+        return profile.middleName;
+      case "lastName":
+        return profile.lastName;
       case "phone":
+        return getFullPhoneNumber(profile);
+      case "countryCode":
+        return profile.countryCode;
+      case "phoneNumber":
+        return profile.phoneNumber;
+      case "email":
       case "website":
       case "linkedin":
       case "github":
@@ -155,8 +168,13 @@ export class DefaultKnowledgeService implements KnowledgeService {
 function isKnowledgeKey(key: string): key is KnowledgeKey {
   return [
     "name",
+    "firstName",
+    "middleName",
+    "lastName",
     "email",
     "phone",
+    "countryCode",
+    "phoneNumber",
     "website",
     "linkedin",
     "github",

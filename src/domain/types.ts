@@ -4,8 +4,13 @@ export type CandidateProfile = ProfileSchema;
 
 export type KnowledgeKey =
   | "name"
+  | "firstName"
+  | "middleName"
+  | "lastName"
   | "email"
   | "phone"
+  | "countryCode"
+  | "phoneNumber"
   | "website"
   | "linkedin"
   | "github"
@@ -42,9 +47,14 @@ export interface ClassificationResult {
 
 export interface CandidateContext {
   personal?: {
-    name: string;
+    fullName: string;
+    firstName: string;
+    middleName: string | null;
+    lastName: string;
     email: string;
     phone: string;
+    countryCode: string;
+    phoneNumber: string;
     website: string | null;
     linkedin: string | null;
     github: string | null;

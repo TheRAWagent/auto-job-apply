@@ -33,9 +33,12 @@ export function createCandidateProfile(
   overrides: Partial<CandidateProfile> = {}
 ): CandidateProfile {
   return {
-    name: "Alex Rivera",
+    firstName: "Alex",
+    middleName: null,
+    lastName: "Rivera",
     email: "alex@example.com",
-    phone: "+1 555-1234",
+    countryCode: "+1",
+    phoneNumber: "555-1234",
     website: "https://alex.dev",
     linkedin: "https://linkedin.com/in/alex",
     github: "https://github.com/alex",

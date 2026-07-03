@@ -1,5 +1,6 @@
 import type { ContextSelector } from "./interfaces";
 import type { CandidateContext, CandidateProfile, ClassificationResult } from "./types";
+import { getFullName, getFullPhoneNumber } from "./profile-utils";
 
 export class MinimalContextSelector implements ContextSelector {
   select(
@@ -11,9 +12,14 @@ export class MinimalContextSelector implements ContextSelector {
 
     if (sections.has("personal")) {
       context.personal = {
-        name: profile.name,
+        fullName: getFullName(profile),
+        firstName: profile.firstName,
+        middleName: profile.middleName,
+        lastName: profile.lastName,
         email: profile.email,
-        phone: profile.phone,
+        phone: getFullPhoneNumber(profile),
+        countryCode: profile.countryCode,
+        phoneNumber: profile.phoneNumber,
         website: profile.website,
         linkedin: profile.linkedin,
         github: profile.github,

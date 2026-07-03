@@ -29,6 +29,30 @@ describe("DefaultAnswerEngine", () => {
     expect(answer.source).toBe("lookup");
   });
 
+  it("answers full name questions with the concatenated name", async () => {
+    const answer = await engine.answer("What is your full name?", "profile-1");
+    expect(answer.value).toBe("Alex Rivera");
+    expect(answer.source).toBe("lookup");
+  });
+
+  it("answers first name questions", async () => {
+    const answer = await engine.answer("What is your first name?", "profile-1");
+    expect(answer.value).toBe("Alex");
+    expect(answer.source).toBe("lookup");
+  });
+
+  it("answers phone questions with the combined number", async () => {
+    const answer = await engine.answer("What is your phone?", "profile-1");
+    expect(answer.value).toBe("+1555-1234");
+    expect(answer.source).toBe("lookup");
+  });
+
+  it("answers country code questions", async () => {
+    const answer = await engine.answer("What is your country code?", "profile-1");
+    expect(answer.value).toBe("+1");
+    expect(answer.source).toBe("lookup");
+  });
+
   it("answers derived questions from the summary", async () => {
     const answer = await engine.answer("What is your current title?", "profile-1");
     expect(answer.value).toBe("Senior Engineer");
