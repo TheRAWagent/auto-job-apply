@@ -37,9 +37,10 @@ export const profileSchema = z.object({
   email: z.string().email("Valid email is required"),
   countryCode: z.string().min(1, "Country code is required"),
   phoneNumber: z.string().min(1, "Phone number is required"),
-  website: z.string().nullable(),
-  linkedin: z.string().nullable(),
-  github: z.string().nullable(),
+  website: z.string().nullable().default(null),
+  linkedin: z.string().nullable().default(null),
+  github: z.string().nullable().default(null),
+  twitter: z.string().nullable().default(null),
   education: z.array(educationSchema),
   experience: z.array(experienceSchema),
   projects: z.array(projectSchema),
@@ -68,6 +69,7 @@ export function emptyProfile(): ProfileSchema {
     website: null,
     linkedin: null,
     github: null,
+    twitter: null,
     education: [],
     experience: [],
     projects: [],
@@ -305,6 +307,16 @@ export function ProfileForm({
             value={profile.github ?? ""}
             onChange={(e) =>
               updateField("github", e.target.value ? e.target.value : null)
+            }
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="twitter">Twitter / X</Label>
+          <Input
+            id="twitter"
+            value={profile.twitter ?? ""}
+            onChange={(e) =>
+              updateField("twitter", e.target.value ? e.target.value : null)
             }
           />
         </div>

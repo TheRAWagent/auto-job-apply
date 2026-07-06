@@ -61,10 +61,18 @@ export class DefaultAnswerEngine implements AnswerEngine {
 
     switch (classification.type) {
       case "lookup": {
-        const lookupAnswer = this.tryLookup(profile, question);
+        const { key, value: lookupAnswer } = this.tryLookup(profile, question);
         if (lookupAnswer !== null) {
           logger.info(LOG_CONTEXT, "Answer resolved from lookup", { profileId });
           return { value: String(lookupAnswer), source: "lookup" };
+        }
+
+        if (key !== null && isDeterministicKey(key)) {
+          logger.info(LOG_CONTEXT, "Deterministic field missing; returning blank", {
+            profileId,
+            key,
+          });
+          return { value: "", source: "lookup" };
         }
         break;
       }
@@ -96,17 +104,17 @@ export class DefaultAnswerEngine implements AnswerEngine {
   private tryLookup(
     profile: NonNullable<Awaited<ReturnType<KnowledgeService["getProfile"]>>>,
     question: string
-  ): unknown | null {
+  ): { key: KnowledgeKey | null; value: unknown | null } {
     const normalized = question.toLowerCase();
     const key = extractLookupKey(normalized);
 
     if (key === null) {
-      return null;
+      return { key: null, value: null };
     }
 
     const value = this.knowledgeService.lookup(profile, key);
     logger.debug(LOG_CONTEXT, "Lookup attempted", { key, found: value !== null });
-    return value;
+    return { key, value };
   }
 
   private async tryDerived(
@@ -136,6 +144,26 @@ export class DefaultAnswerEngine implements AnswerEngine {
   }
 }
 
+function isDeterministicKey(key: KnowledgeKey): boolean {
+  return DETERMINISTIC_KEYS.includes(key);
+}
+
+const DETERMINISTIC_KEYS: KnowledgeKey[] = [
+  "name",
+  "firstName",
+  "middleName",
+  "lastName",
+  "email",
+  "phone",
+  "countryCode",
+  "phoneNumber",
+  "website",
+  "linkedin",
+  "github",
+  "twitter",
+  "skills",
+];
+
 function extractLookupKey(question: string): KnowledgeKey | null {
   const mapping: Record<string, KnowledgeKey> = {
     "full name": "name",
@@ -157,6 +185,8 @@ function extractLookupKey(question: string): KnowledgeKey | null {
     portfolio: "website",
     linkedin: "linkedin",
     github: "github",
+    twitter: "twitter",
+    "x profile": "twitter",
     skills: "skills",
     "tech stack": "skills",
     technologies: "skills",

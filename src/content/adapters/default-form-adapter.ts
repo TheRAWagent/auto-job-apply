@@ -2,9 +2,11 @@ import type { AnswerRequestMessage, BackgroundMessage } from "@/background";
 import type { DetectedField } from "../detected-field";
 import type { FormAdapter } from "../form-adapter";
 import { logDebug, logInfo, logWarn, reportError } from "../logger";
+import { base64ToFile, fetchResume } from "../resume-helper";
 
 export class DefaultFormAdapter implements FormAdapter {
-  canHandle(_url: URL): boolean {
+  canHandle(url: URL): boolean {
+    void url;
     return true;
   }
   detectFields(): DetectedField[] {
@@ -14,6 +16,8 @@ export class DefaultFormAdapter implements FormAdapter {
       const inputs = document.querySelectorAll(
         "input:not([type='hidden']):not([type='submit']):not([type='button']), textarea, select"
       );
+
+      const fileInputs = document.querySelectorAll("input[type='file']");
 
       for (const element of inputs) {
         if (
@@ -29,6 +33,20 @@ export class DefaultFormAdapter implements FormAdapter {
             label,
             question,
             type: this.inferFieldType(element),
+          });
+        }
+      }
+
+      for (const element of fileInputs) {
+        if (element instanceof HTMLInputElement) {
+          const label = this.extractLabel(element);
+          const question = label || element.getAttribute("placeholder") || "";
+
+          fields.push({
+            element,
+            label,
+            question,
+            type: "file",
           });
         }
       }
@@ -97,6 +115,17 @@ export class DefaultFormAdapter implements FormAdapter {
     let skippedCount = 0;
 
     for (const field of fields) {
+      if (field.type === "file") {
+        try {
+          await this.fillFileField(field, profileId);
+          filledCount++;
+        } catch (error) {
+          reportError("Failed to fill file field", error, { label: field.label });
+          skippedCount++;
+        }
+        continue;
+      }
+
       if (!field.question) {
         skippedCount++;
         continue;
@@ -104,6 +133,11 @@ export class DefaultFormAdapter implements FormAdapter {
 
       try {
         const { answer } = await this.askBackground(field.question, profileId);
+        if (answer.trim() === "") {
+          logDebug("Skipping blank answer for field", { label: field.label });
+          skippedCount++;
+          continue;
+        }
         this.fillField(field, answer);
         filledCount++;
       } catch (error) {
@@ -187,6 +221,8 @@ export class DefaultFormAdapter implements FormAdapter {
         return "radio";
       case "checkbox":
         return "checkbox";
+      case "file":
+        return "file";
       case "text":
       case "email":
       case "tel":
@@ -249,5 +285,22 @@ export class DefaultFormAdapter implements FormAdapter {
     });
 
     return { answer: response.answer, source: response.source };
+  }
+
+  private async fillFileField(field: DetectedField, profileId: string): Promise<void> {
+    if (!(field.element instanceof HTMLInputElement) || field.element.type !== "file") {
+      logWarn("Skipping non-file field passed to fillFileField", { label: field.label });
+      return;
+    }
+
+    const pdfBase64 = await fetchResume(profileId);
+    const file = base64ToFile(pdfBase64, "resume.pdf", "application/pdf");
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    field.element.files = dataTransfer.files;
+    field.element.dispatchEvent(new Event("change", { bubbles: true }));
+
+    logInfo("Filled file field with resume PDF", { label: field.label, fileName: file.name });
   }
 }

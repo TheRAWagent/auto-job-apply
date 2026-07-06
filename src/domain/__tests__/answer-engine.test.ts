@@ -70,4 +70,28 @@ describe("DefaultAnswerEngine", () => {
       ProfileNotFoundError
     );
   });
+
+  it("returns a blank answer for missing deterministic fields instead of using the LLM", async () => {
+    const sparseProfile = createCandidateProfile({
+      github: null,
+      twitter: null,
+    });
+    const sparseRepository = createMockProfileRepository({ "sparse": sparseProfile });
+    const sparseKnowledgeService = new DefaultKnowledgeService(sparseRepository);
+    const llmEngine = new DefaultAnswerEngine({
+      classifier: new RuleBasedKnowledgeClassifier(),
+      contextSelector: new MinimalContextSelector(),
+      promptBuilder: new DefaultPromptBuilder(),
+      llmProvider: createMockLLMProvider("Not provided"),
+      knowledgeService: sparseKnowledgeService,
+    });
+
+    const githubAnswer = await llmEngine.answer("What is your GitHub profile?", "sparse");
+    expect(githubAnswer.value).toBe("");
+    expect(githubAnswer.source).toBe("lookup");
+
+    const twitterAnswer = await llmEngine.answer("What is your Twitter profile?", "sparse");
+    expect(twitterAnswer.value).toBe("");
+    expect(twitterAnswer.source).toBe("lookup");
+  });
 });

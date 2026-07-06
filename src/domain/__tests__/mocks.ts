@@ -42,6 +42,7 @@ export function createCandidateProfile(
     website: "https://alex.dev",
     linkedin: "https://linkedin.com/in/alex",
     github: "https://github.com/alex",
+    twitter: "https://x.com/alex",
     education: [
       {
         degree: "B.S. Computer Science",

@@ -23,6 +23,7 @@ export class MinimalContextSelector implements ContextSelector {
         website: profile.website,
         linkedin: profile.linkedin,
         github: profile.github,
+        twitter: profile.twitter,
       };
     }
 

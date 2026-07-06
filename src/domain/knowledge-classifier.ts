@@ -65,6 +65,8 @@ const lookupPatterns: PatternGroup = {
     "portfolio",
     "linkedin",
     "github",
+    "twitter",
+    "x",
     "location",
     "address",
     "city",
@@ -143,7 +145,7 @@ function selectRelevantSections(
 ): ProfileSection[] {
   switch (type) {
     case "lookup":
-      if (input.includes("email") || input.includes("phone") || input.includes("name") || input.includes("website") || input.includes("linkedin") || input.includes("github")) {
+      if (input.includes("email") || input.includes("phone") || input.includes("name") || input.includes("website") || input.includes("linkedin") || input.includes("github") || input.includes("twitter") || input.includes(" x ")) {
         return ["personal"];
       }
       return ["personal", "education", "experience", "projects", "skills"];

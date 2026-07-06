@@ -66,10 +66,28 @@ export interface AnswerErrorMessage {
   error: string;
 }
 
+export interface ResumeRequestMessage {
+  type: "RESUME_REQUEST";
+  profileId: string;
+}
+
+export interface ResumeResponseMessage {
+  type: "RESUME_RESPONSE";
+  pdfBase64: string | null;
+}
+
+export interface ResumeErrorMessage {
+  type: "RESUME_ERROR";
+  error: string;
+}
+
 export type BackgroundMessage =
   | AnswerRequestMessage
   | AnswerResponseMessage
-  | AnswerErrorMessage;
+  | AnswerErrorMessage
+  | ResumeRequestMessage
+  | ResumeResponseMessage
+  | ResumeErrorMessage;
 
 chrome.runtime.onMessage.addListener((
   message: BackgroundMessage,
@@ -81,31 +99,54 @@ chrome.runtime.onMessage.addListener((
     sender: sender.tab ? { tabId: sender.tab.id, url: sender.tab.url } : "popup",
   });
 
-  if (message.type !== "ANSWER_REQUEST") {
-    logger.warn(LOG_CONTEXT, "Ignoring unexpected message type", { type: message.type });
-    return false;
+  if (message.type === "ANSWER_REQUEST") {
+    handleAnswerRequest(message)
+      .then((response) => {
+        logger.debug(LOG_CONTEXT, "Sending answer response", {
+          type: response.type,
+          profileId: message.profileId,
+        });
+        sendResponse(response);
+      })
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to handle ANSWER_REQUEST",
+          error,
+          extra: { profileId: message.profileId },
+        });
+        sendResponse({ type: "ANSWER_ERROR", error: errorMessage });
+      });
+
+    return true;
   }
 
-  handleAnswerRequest(message)
-    .then((response) => {
-      logger.debug(LOG_CONTEXT, "Sending answer response", {
-        type: response.type,
-        profileId: message.profileId,
+  if (message.type === "RESUME_REQUEST") {
+    handleResumeRequest(message)
+      .then((response) => {
+        logger.debug(LOG_CONTEXT, "Sending resume response", {
+          type: response.type,
+          profileId: message.profileId,
+        });
+        sendResponse(response);
+      })
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        logger.reportError({
+          context: LOG_CONTEXT,
+          message: "Failed to handle RESUME_REQUEST",
+          error,
+          extra: { profileId: message.profileId },
+        });
+        sendResponse({ type: "RESUME_ERROR", error: errorMessage });
       });
-      sendResponse(response);
-    })
-    .catch((error: unknown) => {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      logger.reportError({
-        context: LOG_CONTEXT,
-        message: "Failed to handle ANSWER_REQUEST",
-        error,
-        extra: { profileId: message.profileId },
-      });
-      sendResponse({ type: "ANSWER_ERROR", error: errorMessage });
-    });
 
-  return true;
+    return true;
+  }
+
+  logger.warn(LOG_CONTEXT, "Ignoring unexpected message type", { type: message.type });
+  return false;
 });
 
 async function ensureStorageUnlocked(): Promise<void> {
@@ -181,4 +222,26 @@ async function handleAnswerRequest(
   });
 
   return response;
+}
+
+async function handleResumeRequest(
+  request: ResumeRequestMessage
+): Promise<ResumeResponseMessage | ResumeErrorMessage> {
+  logger.info(LOG_CONTEXT, "Handling resume request", { profileId: request.profileId });
+
+  await ensureStorageUnlocked();
+
+  const applicationProfile = await secureStorage.getApplicationProfile(request.profileId);
+
+  if (!applicationProfile) {
+    logger.warn(LOG_CONTEXT, "Profile not found for resume request", { profileId: request.profileId });
+    return { type: "RESUME_ERROR", error: "Profile not found" };
+  }
+
+  logger.info(LOG_CONTEXT, "Resume delivered", {
+    profileId: request.profileId,
+    hasPdf: !!applicationProfile.pdfBase64,
+  });
+
+  return { type: "RESUME_RESPONSE", pdfBase64: applicationProfile.pdfBase64 ?? null };
 }

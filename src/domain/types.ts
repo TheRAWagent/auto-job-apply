@@ -14,6 +14,7 @@ export type KnowledgeKey =
   | "website"
   | "linkedin"
   | "github"
+  | "twitter"
   | "skills"
   | "education"
   | "experience"
@@ -58,6 +59,7 @@ export interface CandidateContext {
     website: string | null;
     linkedin: string | null;
     github: string | null;
+    twitter: string | null;
   };
   education?: CandidateProfile["education"];
   experience?: CandidateProfile["experience"];

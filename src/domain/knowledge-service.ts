@@ -100,6 +100,7 @@ export class DefaultKnowledgeService implements KnowledgeService {
       case "website":
       case "linkedin":
       case "github":
+      case "twitter":
         return profile[key];
       case "skills":
         return [...profile.skills];
@@ -178,6 +179,7 @@ function isKnowledgeKey(key: string): key is KnowledgeKey {
     "website",
     "linkedin",
     "github",
+    "twitter",
     "skills",
     "education",
     "experience",

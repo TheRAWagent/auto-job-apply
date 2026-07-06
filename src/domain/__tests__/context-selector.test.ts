@@ -25,6 +25,7 @@ describe("MinimalContextSelector", () => {
       website: profile.website,
       linkedin: profile.linkedin,
       github: profile.github,
+      twitter: profile.twitter,
     });
     expect(context.experience).toBeUndefined();
   });
